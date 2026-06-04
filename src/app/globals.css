@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #FAF8F6;
+  --fg: #0D0D0D;
+  --accent: #6B1F35;
+  --accent-hover: #3D1020;
+  --border-color: #E8E4E0;
+  --surface: #F2EDE8;
+  --muted: #6B6460;
+}
+
+html, body {
+  background-color: #FAF8F6;
+  color: #0D0D0D;
+}
+
+* {
+  border-color: #E8E4E0;
+}
