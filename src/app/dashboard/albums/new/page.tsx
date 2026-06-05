@@ -211,7 +211,7 @@ export default function NewAlbumPage() {
           </Field>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Limite de seleções" required>
+            <Field label="Mínimo de seleções" required>
               <input
                 type="number" required min={1} value={maxSelections}
                 onChange={(e) => setMaxSelections(Number(e.target.value))}

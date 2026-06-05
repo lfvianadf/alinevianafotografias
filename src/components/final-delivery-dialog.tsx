@@ -39,12 +39,7 @@ export default function FinalDeliveryDialog({ album, open, onClose, onDeliveryCr
   }, [files])
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const selected = Array.from(e.target.files ?? [])
-    if (selected.length > album.max_selections) {
-      toast.error(`Limite: ${album.max_selections} fotos para este ensaio.`)
-      return
-    }
-    setFiles(selected)
+    setFiles(Array.from(e.target.files ?? []))
     e.target.value = ''
   }
 
@@ -124,7 +119,7 @@ export default function FinalDeliveryDialog({ album, open, onClose, onDeliveryCr
               Ensaio final
             </h2>
             <p className="text-xs text-[#6B6460] mt-0.5">
-              Fotos editadas sem marca d'água · máx. {album.max_selections}
+              Fotos editadas sem marca d'água para a cliente baixar
             </p>
           </div>
           {!uploading && (
@@ -157,7 +152,7 @@ export default function FinalDeliveryDialog({ album, open, onClose, onDeliveryCr
                     ? `${files.length} foto${files.length !== 1 ? 's' : ''} selecionada${files.length !== 1 ? 's' : ''} — clique para trocar`
                     : 'Clique para selecionar as fotos editadas'}
                 </span>
-                <span className="text-xs text-[#6B6460]/60">Máximo {album.max_selections} fotos</span>
+                <span className="text-xs text-[#6B6460]/60">JPG, PNG — múltiplos arquivos</span>
               </button>
             </div>
           )}

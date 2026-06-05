@@ -407,6 +407,8 @@ function LoadingSkeleton() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+const BATCH = 20
+
 export default function AlbumClient({ token }: { token: string }) {
   const [photos, setPhotos] = useState<PhotoItem[]>([])
   const [album, setAlbum] = useState<AlbumMeta | null>(null)
@@ -419,9 +421,15 @@ export default function AlbumClient({ token }: { token: string }) {
   const [error, setError] = useState('')
   const [submitError, setSubmitError] = useState('')
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const expiredRef = useRef<Set<string>>(new Set())
-  const isFirstFetch = useRef(true)
+  const [hasMore, setHasMore] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+
+  const isFirstLoad = useRef(true)
+  const loadingMoreRef = useRef(false)
+  const hasMoreRef = useRef(true)
+  const photosCountRef = useRef(0)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
   const lsKey = `album-sel-${token}`
 
   const saveToStorage = useCallback((ids: Set<string>) => {
@@ -432,13 +440,16 @@ export default function AlbumClient({ token }: { token: string }) {
     try { localStorage.removeItem(lsKey) } catch { /* ignore */ }
   }, [lsKey])
 
-  const fetchPhotos = useCallback(async () => {
-    const isFirst = isFirstFetch.current
+  useEffect(() => { hasMoreRef.current = hasMore }, [hasMore])
+  useEffect(() => { photosCountRef.current = photos.length }, [photos.length])
+
+  const loadBatch = useCallback(async (offset: number) => {
+    const isFirst = offset === 0 && isFirstLoad.current
     try {
       const res = await fetch('/api/album/photos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token, offset, limit: BATCH }),
       })
       const data = await res.json()
 
@@ -447,53 +458,59 @@ export default function AlbumClient({ token }: { token: string }) {
         return
       }
 
-      setPhotos(data.photos)
-
       if (isFirst) {
-        isFirstFetch.current = false
+        isFirstLoad.current = false
+        setPhotos(data.photos)
         setAlbum(data.album)
         setLoading(false)
 
-        // Prioridade: localStorage (seleções em andamento) > banco (confirmadas)
+        // Prioridade: localStorage (em andamento) > banco (confirmadas)
         const saved = (() => {
           try { return JSON.parse(localStorage.getItem(lsKey) ?? 'null') } catch { return null }
         })()
-
-        if (saved && Array.isArray(saved) && saved.length > 0) {
+        if (saved?.length > 0) {
           setSelections(new Set(saved))
-          // Se também há confirmadas no banco, mantém a flag mas não sobrescreve
           if (data.selectedPhotoIds?.length > 0) setHadPreviousSelection(true)
         } else if (data.selectedPhotoIds?.length > 0) {
           setSelections(new Set(data.selectedPhotoIds))
           setHadPreviousSelection(true)
         }
 
-        if (data.album.logo_url) {
+        if (data.album?.logo_url) {
           const img = new window.Image()
           img.crossOrigin = 'anonymous'
           img.onload = () => setLogoImg(img)
           img.onerror = () => setLogoImg(null)
           img.src = data.album.logo_url
         }
+      } else {
+        setPhotos(prev => [...prev, ...data.photos])
       }
 
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-      refreshTimerRef.current = setTimeout(() => fetchPhotos(), 5 * 60 * 60 * 1000)
+      setHasMore(data.hasMore)
     } catch {
       if (isFirst) { setError('Não foi possível carregar o álbum. Tente novamente.'); setLoading(false) }
     }
   }, [token, lsKey])
 
-  useEffect(() => {
-    fetchPhotos()
-    return () => { if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current) }
-  }, [fetchPhotos])
+  useEffect(() => { loadBatch(0) }, [loadBatch])
 
-  const handleSignedUrlExpired = useCallback((id: string) => {
-    expiredRef.current.add(id)
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-    refreshTimerRef.current = setTimeout(() => fetchPhotos(), 300)
-  }, [fetchPhotos])
+  // Infinite scroll via IntersectionObserver
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || loadingMoreRef.current || !hasMoreRef.current) return
+      loadingMoreRef.current = true
+      setLoadingMore(true)
+      loadBatch(photosCountRef.current).finally(() => {
+        loadingMoreRef.current = false
+        setLoadingMore(false)
+      })
+    }, { rootMargin: '400px' })
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [loadBatch])
 
   const toggleSelection = useCallback((id: string) => {
     setSelections(prev => {
@@ -509,11 +526,13 @@ export default function AlbumClient({ token }: { token: string }) {
     setLightboxIndex(index)
   }, [])
 
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  const noopExpired = useCallback((_id: string) => {}, [])
+
   async function handleConfirm() {
     if (!album || selections.size === 0) return
     setSubmitError('')
     setConfirming(true)
-
     try {
       const res = await fetch('/api/album/select', {
         method: 'POST',
@@ -595,22 +614,27 @@ export default function AlbumClient({ token }: { token: string }) {
             <p className="text-[#6B6460] text-sm">Nenhuma foto disponível ainda.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-            {photos.map((photo, i) => (
-              <MemoPhoto
-                key={photo.id}
-                photo={photo}
-                index={i}
-                isSelected={selections.has(photo.id)}
-                isAtLimit={false}
-                onOpen={handleOpen}
-                onToggleSelect={toggleSelection}
-                watermark={album.watermark}
-                logoImg={logoImg}
-                onSignedUrlExpired={handleSignedUrlExpired}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+              {photos.map((photo, i) => (
+                <MemoPhoto
+                  key={photo.id}
+                  photo={photo}
+                  index={i}
+                  isSelected={selections.has(photo.id)}
+                  isAtLimit={false}
+                  onOpen={handleOpen}
+                  onToggleSelect={toggleSelection}
+                  watermark={album.watermark}
+                  logoImg={logoImg}
+                  onSignedUrlExpired={noopExpired}
+                />
+              ))}
+            </div>
+            <div ref={sentinelRef} className="flex justify-center py-8">
+              {loadingMore && <Loader2 size={20} className="animate-spin text-[#6B6460]" />}
+            </div>
+          </>
         )}
       </main>
 

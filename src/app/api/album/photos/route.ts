@@ -11,7 +11,7 @@ function adminClient() {
 
 export async function POST(request: Request) {
   try {
-    const { token } = await request.json()
+    const { token, offset = 0, limit = 20 } = await request.json()
 
     if (!token || typeof token !== 'string') {
       return NextResponse.json({ error: 'Token inválido.' }, { status: 400 })
@@ -37,27 +37,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Este álbum expirou.' }, { status: 410 })
     }
 
-    // Fetch photos (storage_path never sent to client)
+    // Total de fotos para calcular hasMore
+    const { count } = await supabase
+      .from('photos')
+      .select('*', { count: 'exact', head: true })
+      .eq('album_id', album.id)
+
+    const total = count ?? 0
+
+    if (total === 0) {
+      return NextResponse.json({
+        photos: [], hasMore: false, total: 0,
+        album: buildAlbumPayload(album),
+        selectedPhotoIds: [],
+      })
+    }
+
+    // Busca apenas a página solicitada
     const { data: photos } = await supabase
       .from('photos')
       .select('id, storage_path, filename, order_index')
       .eq('album_id', album.id)
       .order('order_index')
+      .range(offset, offset + limit - 1)
 
     if (!photos || photos.length === 0) {
-      return NextResponse.json({
-        photos: [],
-        album: buildAlbumPayload(album),
-      })
+      return NextResponse.json({ photos: [], hasMore: false, total })
     }
 
-    // Generate signed URLs in parallel
+    // Gera signed URLs apenas para este lote
     const signedResults = await Promise.all(
       photos.map(async (photo) => {
         const { data } = await supabase.storage
           .from('albums')
           .createSignedUrl(photo.storage_path, 21600)
-
         return {
           id: photo.id,
           filename: photo.filename,
@@ -67,17 +80,23 @@ export async function POST(request: Request) {
       })
     )
 
-    // Busca seleções existentes
-    const { data: existingSelections } = await supabase
-      .from('selections')
-      .select('photo_id')
-      .eq('album_id', album.id)
-
-    return NextResponse.json({
+    const result: Record<string, unknown> = {
       photos: signedResults.filter((p) => p.signedUrl !== null),
-      album: buildAlbumPayload(album),
-      selectedPhotoIds: (existingSelections ?? []).map((s: { photo_id: string }) => s.photo_id),
-    })
+      hasMore: total > offset + limit,
+      total,
+    }
+
+    // Metadados e seleções confirmadas só precisam ir na primeira página
+    if (offset === 0) {
+      result.album = buildAlbumPayload(album)
+      const { data: existingSelections } = await supabase
+        .from('selections')
+        .select('photo_id')
+        .eq('album_id', album.id)
+      result.selectedPhotoIds = (existingSelections ?? []).map((s: { photo_id: string }) => s.photo_id)
+    }
+
+    return NextResponse.json(result)
   } catch {
     return NextResponse.json({ error: 'Erro interno.' }, { status: 500 })
   }
