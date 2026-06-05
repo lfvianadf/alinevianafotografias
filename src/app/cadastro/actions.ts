@@ -60,9 +60,10 @@ export async function registerAction(formData: FormData) {
   })
 
   if (profileError) {
-    // Desfaz criação do usuário para evitar orphan
+    // 23505 = trigger já inseriu o perfil automaticamente, não é erro
+    if (profileError.code === '23505') return { ok: true }
     await admin.auth.admin.deleteUser(userId)
-    return { error: `Erro ao salvar perfil: ${profileError.message} (code: ${profileError.code})` }
+    return { error: 'Erro ao salvar perfil. Tente novamente.' }
   }
 
   return { ok: true }
