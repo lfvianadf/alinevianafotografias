@@ -421,8 +421,10 @@ export default function AlbumClient({ token }: { token: string }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const expiredRef = useRef<Set<string>>(new Set())
+  const isFirstFetch = useRef(true)
 
   const fetchPhotos = useCallback(async () => {
+    const isFirst = isFirstFetch.current
     try {
       const res = await fetch('/api/album/photos', {
         method: 'POST',
@@ -431,31 +433,38 @@ export default function AlbumClient({ token }: { token: string }) {
       })
       const data = await res.json()
 
-      if (!res.ok) { setError(data.error ?? 'Algo deu errado.'); setLoading(false); return }
-
-      setPhotos(data.photos)
-      setAlbum(data.album)
-
-      if (data.selectedPhotoIds?.length > 0) {
-        setSelections(new Set(data.selectedPhotoIds))
-        setHadPreviousSelection(true)
+      if (!res.ok) {
+        if (isFirst) { setError(data.error ?? 'Algo deu errado.'); setLoading(false) }
+        return
       }
 
-      setLoading(false)
+      // Sempre atualiza as URLs das fotos (podem ter expirado)
+      setPhotos(data.photos)
 
-      if (data.album.logo_url) {
-        const img = new window.Image()
-        img.crossOrigin = 'anonymous'
-        img.onload = () => setLogoImg(img)
-        img.onerror = () => setLogoImg(null)
-        img.src = data.album.logo_url
+      // Só inicializa estado no primeiro carregamento
+      if (isFirst) {
+        isFirstFetch.current = false
+        setAlbum(data.album)
+        setLoading(false)
+
+        if (data.selectedPhotoIds?.length > 0) {
+          setSelections(new Set(data.selectedPhotoIds))
+          setHadPreviousSelection(true)
+        }
+
+        if (data.album.logo_url) {
+          const img = new window.Image()
+          img.crossOrigin = 'anonymous'
+          img.onload = () => setLogoImg(img)
+          img.onerror = () => setLogoImg(null)
+          img.src = data.album.logo_url
+        }
       }
 
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-      refreshTimerRef.current = setTimeout(() => fetchPhotos(), 25 * 60 * 1000)
+      refreshTimerRef.current = setTimeout(() => fetchPhotos(), 5 * 60 * 60 * 1000)
     } catch {
-      setError('Não foi possível carregar o álbum. Tente novamente.')
-      setLoading(false)
+      if (isFirst) { setError('Não foi possível carregar o álbum. Tente novamente.'); setLoading(false) }
     }
   }, [token])
 

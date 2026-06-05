@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       photos.map(async (photo) => {
         const { data } = await supabase.storage
           .from('albums')
-          .createSignedUrl(photo.storage_path, 1800)
+          .createSignedUrl(photo.storage_path, 21600)
 
         return {
           id: photo.id,

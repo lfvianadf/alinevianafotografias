@@ -41,9 +41,9 @@ export async function POST(request: Request) {
       )
     }
 
-    if (photo_ids.length > album.max_selections) {
+    if (photo_ids.length < album.max_selections) {
       return NextResponse.json(
-        { error: `Você pode selecionar no máximo ${album.max_selections} fotos.` },
+        { error: `Selecione pelo menos ${album.max_selections} fotos para confirmar.` },
         { status: 422 }
       )
     }
