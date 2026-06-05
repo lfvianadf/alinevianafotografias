@@ -199,17 +199,16 @@ function Lightbox({
 
 // ─── Photo Card ───────────────────────────────────────────────────────────────
 
-// Wrapper memoizado com callbacks estáveis (recebe index + id, sem closures inline)
 const MemoPhoto = memo(function MemoPhoto(props: {
   photo: PhotoItem
   index: number
   isSelected: boolean
-  isAtLimit: boolean
+  selectionMode: boolean
   onOpen: (index: number) => void
   onToggleSelect: (id: string) => void
+  onActivateMode: () => void
   watermark: string
   logoImg: HTMLImageElement | null
-  onSignedUrlExpired: (id: string) => void
 }) {
   const open = useCallback(() => props.onOpen(props.index), [props.onOpen, props.index])
   const toggle = useCallback(() => props.onToggleSelect(props.photo.id), [props.onToggleSelect, props.photo.id])
@@ -217,12 +216,12 @@ const MemoPhoto = memo(function MemoPhoto(props: {
     <PhotoCard
       photo={props.photo}
       isSelected={props.isSelected}
-      isAtLimit={props.isAtLimit}
+      selectionMode={props.selectionMode}
       onOpen={open}
       onToggleSelect={toggle}
+      onActivateMode={props.onActivateMode}
       watermark={props.watermark}
       logoImg={props.logoImg}
-      onSignedUrlExpired={props.onSignedUrlExpired}
     />
   )
 })
@@ -230,32 +229,31 @@ const MemoPhoto = memo(function MemoPhoto(props: {
 const PhotoCard = memo(function PhotoCard({
   photo,
   isSelected,
-  isAtLimit,
+  selectionMode,
   onOpen,
   onToggleSelect,
+  onActivateMode,
   watermark,
   logoImg,
-  onSignedUrlExpired,
 }: {
   photo: PhotoItem
   isSelected: boolean
-  isAtLimit: boolean
+  selectionMode: boolean
   onOpen: () => void
   onToggleSelect: () => void
+  onActivateMode: () => void
   watermark: string
   logoImg: HTMLImageElement | null
-  onSignedUrlExpired: (id: string) => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [loaded, setLoaded] = useState(false)
-  const drawnUrlRef = useRef<string | null>(null)       // evita re-draw desnecessário
+  const drawnUrlRef = useRef<string | null>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const didLongPress = useRef(false)
 
   const paint = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    // Já desenhado com essa URL — não refaz
     if (drawnUrlRef.current === photo.signedUrl && loaded) return
 
     setLoaded(false)
@@ -272,17 +270,16 @@ const PhotoCard = memo(function PhotoCard({
       drawnUrlRef.current = photo.signedUrl
       setLoaded(true)
     }
-    img.onerror = () => onSignedUrlExpired(photo.id)
     img.src = photo.signedUrl
-  }, [photo.signedUrl, photo.id, watermark, logoImg, onSignedUrlExpired, loaded])
+  }, [photo.signedUrl, watermark, logoImg, loaded])
 
   useEffect(() => { paint() }, [paint])
 
-  // Long press (mobile selection)
   function handleTouchStart() {
     didLongPress.current = false
     longPressTimer.current = setTimeout(() => {
       didLongPress.current = true
+      onActivateMode()
       onToggleSelect()
       navigator.vibrate?.(40)
     }, 500)
@@ -293,8 +290,12 @@ const PhotoCard = memo(function PhotoCard({
   }
 
   function handleClick() {
-    if (didLongPress.current) return
-    onOpen()
+    if (didLongPress.current) { didLongPress.current = false; return }
+    if (selectionMode) {
+      onToggleSelect()
+    } else {
+      onOpen()
+    }
   }
 
   return (
@@ -303,19 +304,14 @@ const PhotoCard = memo(function PhotoCard({
         'relative group rounded overflow-hidden cursor-pointer select-none',
         'transition-all duration-150',
         isSelected ? 'ring-2 ring-[#6B1F35] ring-offset-1' : '',
-        isAtLimit && !isSelected ? 'opacity-50' : '',
       ].join(' ')}
       onClick={handleClick}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onTouchMove={handleTouchEnd}
     >
-      {/* Container de proporção fixa — evita layout shift */}
       <div className="aspect-[4/3] relative bg-[#EDE8E3]">
-        {/* Skeleton animado enquanto carrega */}
-        {!loaded && (
-          <div className="absolute inset-0 bg-[#EDE8E3] animate-pulse" />
-        )}
+        {!loaded && <div className="absolute inset-0 bg-[#EDE8E3] animate-pulse" />}
         <canvas
           ref={canvasRef}
           className={[
@@ -326,15 +322,12 @@ const PhotoCard = memo(function PhotoCard({
         />
       </div>
 
-      {/* Checkbox — desktop hover */}
+      {/* Checkbox: sempre visível no modo seleção, hover no desktop normal */}
       <button
-        onClick={(e) => { e.stopPropagation(); if (!isAtLimit || isSelected) onToggleSelect() }}
+        onClick={(e) => { e.stopPropagation(); onToggleSelect() }}
         className={[
-          'absolute top-2 left-2 z-10 rounded-full transition-all duration-150',
-          'shadow-sm',
-          isSelected
-            ? 'opacity-100'
-            : 'opacity-0 group-hover:opacity-100',
+          'absolute top-2 left-2 z-10 rounded-full transition-all duration-150 shadow-sm',
+          isSelected || selectionMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
         ].join(' ')}
         aria-label={isSelected ? 'Desmarcar' : 'Selecionar'}
       >
@@ -345,7 +338,6 @@ const PhotoCard = memo(function PhotoCard({
         )}
       </button>
 
-      {/* Selected overlay */}
       {isSelected && (
         <div className="absolute inset-0 bg-[#6B1F35]/10 pointer-events-none rounded" />
       )}
@@ -423,6 +415,7 @@ export default function AlbumClient({ token }: { token: string }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [selectionMode, setSelectionMode] = useState(false)
 
   const isFirstLoad = useRef(true)
   const loadingMoreRef = useRef(false)
@@ -495,8 +488,9 @@ export default function AlbumClient({ token }: { token: string }) {
 
   useEffect(() => { loadBatch(0) }, [loadBatch])
 
-  // Infinite scroll via IntersectionObserver
+  // Infinite scroll — roda de novo quando loading muda para false (sentinel entra no DOM)
   useEffect(() => {
+    if (loading) return
     const sentinel = sentinelRef.current
     if (!sentinel) return
     const observer = new IntersectionObserver(([entry]) => {
@@ -510,7 +504,7 @@ export default function AlbumClient({ token }: { token: string }) {
     }, { rootMargin: '400px' })
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [loadBatch])
+  }, [loadBatch, loading])
 
   const toggleSelection = useCallback((id: string) => {
     setSelections(prev => {
@@ -526,8 +520,7 @@ export default function AlbumClient({ token }: { token: string }) {
     setLightboxIndex(index)
   }, [])
 
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
-  const noopExpired = useCallback((_id: string) => {}, [])
+  const activateMode = useCallback(() => setSelectionMode(true), [])
 
   async function handleConfirm() {
     if (!album || selections.size === 0) return
@@ -599,12 +592,24 @@ export default function AlbumClient({ token }: { token: string }) {
             </p>
           </div>
         )}
-        <p className="text-xs text-[#6B6460]">
-          Toque para visualizar ·{' '}
-          <span className="sm:hidden">Segure para selecionar</span>
-          <span className="hidden sm:inline">Clique no ✓ para selecionar</span>
-          {' '}· Mínimo: {album.max_selections} fotos
-        </p>
+        {selectionMode ? (
+          <div className="flex items-center justify-between bg-[#0D0D0D] text-white rounded px-3 py-2">
+            <p className="text-xs">Modo seleção — toque nas fotos para marcar</p>
+            <button
+              onClick={() => setSelectionMode(false)}
+              className="text-xs text-white/60 hover:text-white ml-4 shrink-0"
+            >
+              ✕ Sair
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs text-[#6B6460]">
+            Toque para visualizar ·{' '}
+            <span className="sm:hidden">Segure para entrar no modo seleção</span>
+            <span className="hidden sm:inline">Clique no ✓ para selecionar</span>
+            {' '}· Mínimo: {album.max_selections} fotos
+          </p>
+        )}
       </div>
 
       {/* Grid */}
@@ -622,12 +627,12 @@ export default function AlbumClient({ token }: { token: string }) {
                   photo={photo}
                   index={i}
                   isSelected={selections.has(photo.id)}
-                  isAtLimit={false}
+                  selectionMode={selectionMode}
                   onOpen={handleOpen}
                   onToggleSelect={toggleSelection}
+                  onActivateMode={activateMode}
                   watermark={album.watermark}
                   logoImg={logoImg}
-                  onSignedUrlExpired={noopExpired}
                 />
               ))}
             </div>
