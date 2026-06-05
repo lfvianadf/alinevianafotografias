@@ -33,6 +33,7 @@ import {
   Check,
   Pencil,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Album, Photo, Selection, AlbumStatus } from '@/lib/types'
@@ -106,7 +107,7 @@ function SortablePhoto({
         <span className="text-xs text-muted truncate flex-1">{photo.filename}</span>
         <button
           onClick={() => onDelete(photo)}
-          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600"
+          className="shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600"
         >
           <Trash2 size={13} />
         </button>
@@ -356,6 +357,17 @@ export default function AlbumDetailPage() {
     toast.success(`${selected.length} foto${selected.length !== 1 ? 's' : ''} baixada${selected.length !== 1 ? 's' : ''}.`)
   }
 
+  async function handleDeleteAlbum() {
+    if (!confirm('Excluir este álbum e todas as fotos? Esta ação não pode ser desfeita.')) return
+    if (photos.length > 0) {
+      await supabase.storage.from('albums').remove(photos.map((p) => p.storage_path))
+    }
+    const { error } = await supabase.from('albums').delete().eq('id', albumId)
+    if (error) { toast.error('Não foi possível excluir o álbum.'); return }
+    toast.success('Álbum excluído.')
+    router.push('/dashboard')
+  }
+
   async function handleChangeStatus(status: AlbumStatus) {
     const { error } = await supabase
       .from('albums')
@@ -418,7 +430,7 @@ export default function AlbumDetailPage() {
               {album.client_email && ` · ${album.client_email}`}
             </p>
             <p className="text-xs text-muted mt-1">
-              Criado em {formatDate(album.created_at)} · Limite:{' '}
+              Criado em {formatDate(album.created_at)} · Mínimo:{' '}
               {album.max_selections} fotos
             </p>
           </div>
@@ -430,6 +442,14 @@ export default function AlbumDetailPage() {
             >
               <Pencil size={13} />
               Editar
+            </button>
+
+            <button
+              onClick={handleDeleteAlbum}
+              className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-500 rounded text-xs hover:bg-red-50 transition-colors"
+            >
+              <AlertTriangle size={13} />
+              Excluir
             </button>
 
             <button
@@ -562,7 +582,7 @@ export default function AlbumDetailPage() {
         <div className="border border-border rounded-md p-6 bg-surface/40">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-xl font-light">
-              Selecionadas pela cliente ({selectedPhotos.length}/{album.max_selections})
+              Selecionadas pela cliente ({selectedPhotos.length} · mínimo {album.max_selections})
             </h2>
             <button
               onClick={handleDownloadSelected}

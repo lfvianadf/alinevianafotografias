@@ -2,12 +2,18 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Copy, Check, Images } from 'lucide-react'
+import { Copy, Check, Images, Trash2 } from 'lucide-react'
 import { AlbumWithCounts } from '@/lib/types'
 import { formatDate, buildClientAlbumUrl } from '@/lib/utils'
 import StatusBadge from './status-badge'
 
-export default function AlbumCard({ album }: { album: AlbumWithCounts }) {
+export default function AlbumCard({
+  album,
+  onDelete,
+}: {
+  album: AlbumWithCounts
+  onDelete?: (id: string) => void
+}) {
   const [copied, setCopied] = useState(false)
 
   const photosCount = album.photos?.[0]?.count ?? 0
@@ -50,22 +56,33 @@ export default function AlbumCard({ album }: { album: AlbumWithCounts }) {
 
       <div className="flex items-center justify-between pt-2 border-t border-border">
         <span className="text-[11px] text-muted">{formatDate(album.created_at)}</span>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1.5 text-[11px] text-muted hover:text-accent transition-colors"
-        >
-          {copied ? (
-            <>
-              <Check size={11} className="text-green-600" />
-              <span className="text-green-600">Copiado</span>
-            </>
-          ) : (
-            <>
-              <Copy size={11} />
-              Link da cliente
-            </>
+        <div className="flex items-center gap-3">
+          {onDelete && (
+            <button
+              onClick={(e) => { e.preventDefault(); onDelete(album.id) }}
+              className="text-[11px] text-muted hover:text-red-500 transition-colors"
+              title="Excluir álbum"
+            >
+              <Trash2 size={12} />
+            </button>
           )}
-        </button>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 text-[11px] text-muted hover:text-accent transition-colors"
+          >
+            {copied ? (
+              <>
+                <Check size={11} className="text-green-600" />
+                <span className="text-green-600">Copiado</span>
+              </>
+            ) : (
+              <>
+                <Copy size={11} />
+                Link da cliente
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </Link>
   )

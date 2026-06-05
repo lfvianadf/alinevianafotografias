@@ -13,6 +13,22 @@ export default function DashboardClient() {
   const [albums, setAlbums] = useState<AlbumWithCounts[]>([])
   const [loading, setLoading] = useState(true)
 
+  async function handleDeleteAlbum(albumId: string) {
+    if (!confirm('Excluir este álbum e todas as fotos? Esta ação não pode ser desfeita.')) return
+    const supabase = createClient()
+    const { data: photos } = await supabase
+      .from('photos')
+      .select('storage_path')
+      .eq('album_id', albumId)
+    if (photos && photos.length > 0) {
+      await supabase.storage.from('albums').remove(photos.map((p) => p.storage_path))
+    }
+    const { error } = await supabase.from('albums').delete().eq('id', albumId)
+    if (error) { toast.error('Não foi possível excluir o álbum.'); return }
+    setAlbums((prev) => prev.filter((a) => a.id !== albumId))
+    toast.success('Álbum excluído.')
+  }
+
   async function loadAlbums() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -91,7 +107,7 @@ export default function DashboardClient() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {albums.map((album) => (
-            <AlbumCard key={album.id} album={album} />
+            <AlbumCard key={album.id} album={album} onDelete={handleDeleteAlbum} />
           ))}
         </div>
       )}

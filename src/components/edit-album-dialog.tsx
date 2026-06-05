@@ -70,7 +70,7 @@ export default function EditAlbumDialog({ album, open, onClose, onSaved }: Props
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md bg-[#FAF8F6] border border-[#E8E4E0] rounded-md shadow-sm">
+      <div className="relative z-10 w-full max-w-md bg-[#FAF8F6] border border-[#E8E4E0] rounded-md shadow-sm overflow-y-auto max-h-[90dvh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E8E4E0]">
           <h2 className="text-2xl font-light" style={{ fontFamily: 'var(--font-cormorant), Georgia, serif' }}>
             Editar álbum
@@ -97,8 +97,8 @@ export default function EditAlbumDialog({ album, open, onClose, onSaved }: Props
               placeholder="opcional" className={inputCls} />
           </Field>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Limite de seleções" required>
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-4">
+            <Field label="Mínimo de seleções" required>
               <input type="number" required min={1} value={maxSelections}
                 onChange={(e) => setMaxSelections(Number(e.target.value))}
                 className={inputCls} />

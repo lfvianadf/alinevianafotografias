@@ -66,7 +66,7 @@ export default function CreateAlbumDialog({ open, onClose, onCreated }: Props) {
         className="absolute inset-0 bg-black/30 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative z-10 w-full max-w-md bg-background border border-border rounded-md shadow-subtle">
+      <div className="relative z-10 w-full max-w-md bg-background border border-border rounded-md shadow-subtle overflow-y-auto max-h-[90dvh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="font-display text-2xl font-light">Novo álbum</h2>
           <button onClick={onClose} className="text-muted hover:text-foreground transition-colors">
@@ -107,8 +107,8 @@ export default function CreateAlbumDialog({ open, onClose, onCreated }: Props) {
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Limite de seleções" required>
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-4">
+            <Field label="Mínimo de seleções" required>
               <input
                 type="number"
                 required

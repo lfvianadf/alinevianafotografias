@@ -473,15 +473,8 @@ export default function AlbumClient({ token }: { token: string }) {
   const toggleSelection = useCallback((id: string) => {
     setSelections(prev => {
       const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        // usa functional update para ler max_selections sem dependência no callback
-        setAlbum(a => {
-          if (a && next.size < a.max_selections) next.add(id)
-          return a
-        })
-      }
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }, [])
@@ -515,7 +508,7 @@ export default function AlbumClient({ token }: { token: string }) {
   if (loading) return <LoadingSkeleton />
   if (!album) return <ErrorScreen message="Álbum não encontrado." />
 
-  const atLimit = selections.size >= album.max_selections
+  const metMinimum = selections.size >= album.max_selections
 
   return (
     <div className="min-h-screen bg-[#FAF8F6]">
@@ -540,10 +533,10 @@ export default function AlbumClient({ token }: { token: string }) {
           </div>
           <div className="shrink-0 text-right">
             <p className="text-xs text-[#6B6460]">
-              <span className={['font-semibold text-sm', atLimit ? 'text-[#6B1F35]' : 'text-[#0D0D0D]'].join(' ')}>
+              <span className={['font-semibold text-sm', metMinimum ? 'text-[#6B1F35]' : 'text-[#0D0D0D]'].join(' ')}>
                 {selections.size}
               </span>
-              <span className="text-[#6B6460]"> de {album.max_selections}</span>
+              <span className="text-[#6B6460]"> de {album.max_selections} mínimo</span>
             </p>
             <p className="text-[11px] text-[#6B6460]">selecionadas</p>
           </div>
@@ -564,7 +557,7 @@ export default function AlbumClient({ token }: { token: string }) {
           Toque para visualizar ·{' '}
           <span className="sm:hidden">Segure para selecionar</span>
           <span className="hidden sm:inline">Clique no ✓ para selecionar</span>
-          {atLimit && <span className="text-[#6B1F35] ml-1">· Limite atingido</span>}
+          {' '}· Mínimo: {album.max_selections} fotos
         </p>
       </div>
 
@@ -582,7 +575,7 @@ export default function AlbumClient({ token }: { token: string }) {
                 photo={photo}
                 index={i}
                 isSelected={selections.has(photo.id)}
-                isAtLimit={atLimit}
+                isAtLimit={false}
                 onOpen={handleOpen}
                 onToggleSelect={toggleSelection}
                 watermark={album.watermark}
@@ -600,16 +593,16 @@ export default function AlbumClient({ token }: { token: string }) {
           <p className="text-sm text-[#6B6460]">
             {submitError
               ? <span className="text-red-600">{submitError}</span>
-              : selections.size === 0
-                ? 'Nenhuma foto selecionada ainda.'
+              : !metMinimum
+                ? `Selecione pelo menos ${album.max_selections} foto${album.max_selections !== 1 ? 's' : ''} para confirmar.`
                 : `${selections.size} foto${selections.size !== 1 ? 's' : ''} selecionada${selections.size !== 1 ? 's' : ''}.`}
           </p>
           <button
             onClick={handleConfirm}
-            disabled={selections.size === 0 || confirming}
+            disabled={!metMinimum || confirming}
             className={[
               'w-full sm:w-auto px-8 py-3 rounded text-sm font-medium tracking-wide transition-all',
-              selections.size > 0 && !confirming
+              metMinimum && !confirming
                 ? 'bg-[#6B1F35] text-white hover:bg-[#3D1020]'
                 : 'bg-[#E8E4E0] text-[#6B6460] cursor-not-allowed',
             'min-h-[44px]',
