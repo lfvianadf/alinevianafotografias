@@ -177,7 +177,16 @@ export default function AlbumDetailPage() {
   const [copiedDelivery, setCopiedDelivery] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
+  const [hasMorePhotos, setHasMorePhotos] = useState(false)
+  const [loadingMorePhotos, setLoadingMorePhotos] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const photosSentinelRef = useRef<HTMLDivElement>(null)
+  const loadingMorePhotosRef = useRef(false)
+  const hasMorePhotosRef = useRef(false)
+  const totalPhotosRef = useRef(0)
+  const photosCountRef = useRef(0)
+
+  const PHOTO_BATCH = 10
 
   const supabase = createClient()
 
@@ -188,16 +197,48 @@ export default function AlbumDetailPage() {
     })
   )
 
+  useEffect(() => { photosCountRef.current = photos.length }, [photos.length])
+
+  const loadPhotosBatch = useCallback(async (offset: number) => {
+    const { data: photosData } = await supabase
+      .from('photos')
+      .select('*')
+      .eq('album_id', albumId)
+      .order('order_index')
+      .range(offset, offset + PHOTO_BATCH - 1)
+
+    if (!photosData || photosData.length === 0) {
+      setHasMorePhotos(false)
+      hasMorePhotosRef.current = false
+      return
+    }
+
+    const withUrls = await Promise.all(
+      photosData.map(async (photo: Photo) => {
+        const { data } = await supabase.storage
+          .from('albums')
+          .createSignedUrl(photo.storage_path, 3600)
+        return { ...photo, signedUrl: data?.signedUrl ?? '' }
+      })
+    )
+
+    if (offset === 0) {
+      setPhotos(withUrls)
+    } else {
+      setPhotos(prev => [...prev, ...withUrls])
+    }
+
+    const hasMore = offset + photosData.length < totalPhotosRef.current
+    setHasMorePhotos(hasMore)
+    hasMorePhotosRef.current = hasMore
+  }, [albumId])
+
   const loadData = useCallback(async () => {
-    const [albumRes, photosRes, selectionsRes, finalRes] = await Promise.all([
+    const [albumRes, selectionsRes, finalRes, countRes] = await Promise.all([
       supabase.from('albums').select('*').eq('id', albumId).single(),
-      supabase
-        .from('photos')
-        .select('*')
-        .eq('album_id', albumId)
-        .order('order_index'),
       supabase.from('selections').select('*').eq('album_id', albumId),
       supabase.from('final_photos').select('id').eq('album_id', albumId).limit(1),
+      supabase.from('photos').select('*', { count: 'exact', head: true }).eq('album_id', albumId),
     ])
 
     if (albumRes.data) {
@@ -205,29 +246,34 @@ export default function AlbumDetailPage() {
       setDeliveryToken(albumRes.data.delivery_token ?? null)
     }
     setHasDelivery((finalRes.data?.length ?? 0) > 0)
-
-    if (photosRes.data && photosRes.data.length > 0) {
-      // Gera signed URLs em paralelo (1h de validade)
-      const withUrls = await Promise.all(
-        photosRes.data.map(async (photo: Photo) => {
-          const { data } = await supabase.storage
-            .from('albums')
-            .createSignedUrl(photo.storage_path, 3600)
-          return { ...photo, signedUrl: data?.signedUrl ?? '' }
-        })
-      )
-      setPhotos(withUrls)
-    }
-
     if (selectionsRes.data) {
       setSelections(new Set(selectionsRes.data.map((s: Selection) => s.photo_id)))
     }
-    setLoading(false)
-  }, [albumId])
 
+    totalPhotosRef.current = countRes.count ?? 0
+    await loadPhotosBatch(0)
+    setLoading(false)
+  }, [albumId, loadPhotosBatch])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  // Infinite scroll para fotos
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (loading) return
+    const sentinel = photosSentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || loadingMorePhotosRef.current || !hasMorePhotosRef.current) return
+      loadingMorePhotosRef.current = true
+      setLoadingMorePhotos(true)
+      loadPhotosBatch(photosCountRef.current).finally(() => {
+        loadingMorePhotosRef.current = false
+        setLoadingMorePhotos(false)
+      })
+    }, { rootMargin: '400px' })
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [loading, loadPhotosBatch])
 
   function handleFilesSelected(files: FileList | File[]) {
     const fileArray = Array.from(files)
@@ -557,7 +603,7 @@ export default function AlbumDetailPage() {
       {photos.length > 0 && (
         <div>
           <h2 className="font-display text-xl font-light mb-4">
-            Fotos ({photos.length})
+            Fotos ({totalPhotosRef.current > 0 ? totalPhotosRef.current : photos.length})
           </h2>
           <DndContext
             sensors={sensors}
@@ -577,6 +623,9 @@ export default function AlbumDetailPage() {
               </div>
             </SortableContext>
           </DndContext>
+          <div ref={photosSentinelRef} className="flex justify-center py-4">
+            {loadingMorePhotos && <Loader2 size={18} className="animate-spin text-muted" />}
+          </div>
         </div>
       )}
 

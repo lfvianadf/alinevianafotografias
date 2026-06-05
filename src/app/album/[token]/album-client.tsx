@@ -260,7 +260,7 @@ const PhotoCard = memo(function PhotoCard({
     const img = new window.Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
-      const maxW = 900
+      const maxW = 400
       const scale = Math.min(1, maxW / img.naturalWidth)
       canvas.width = Math.round(img.naturalWidth * scale)
       canvas.height = Math.round(img.naturalHeight * scale)
@@ -399,7 +399,7 @@ function LoadingSkeleton() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-const BATCH = 20
+const BATCH = 10
 
 export default function AlbumClient({ token }: { token: string }) {
   const [photos, setPhotos] = useState<PhotoItem[]>([])

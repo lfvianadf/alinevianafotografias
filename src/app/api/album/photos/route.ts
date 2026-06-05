@@ -11,7 +11,7 @@ function adminClient() {
 
 export async function POST(request: Request) {
   try {
-    const { token, offset = 0, limit = 20 } = await request.json()
+    const { token, offset = 0, limit = 10 } = await request.json()
 
     if (!token || typeof token !== 'string') {
       return NextResponse.json({ error: 'Token inválido.' }, { status: 400 })
