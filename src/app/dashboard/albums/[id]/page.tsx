@@ -599,37 +599,7 @@ export default function AlbumDetailPage() {
         )}
       </div>
 
-      {/* Photo Grid */}
-      {photos.length > 0 && (
-        <div>
-          <h2 className="font-display text-xl font-light mb-4">
-            Fotos ({totalPhotosRef.current > 0 ? totalPhotosRef.current : photos.length})
-          </h2>
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext items={photos.map((p) => p.id)} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {photos.map((photo) => (
-                  <SortablePhoto
-                    key={photo.id}
-                    photo={photo}
-                    isSelected={selections.has(photo.id)}
-                    onDelete={handleDeletePhoto}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-          <div ref={photosSentinelRef} className="flex justify-center py-4">
-            {loadingMorePhotos && <Loader2 size={18} className="animate-spin text-muted" />}
-          </div>
-        </div>
-      )}
-
-      {/* Selections Panel */}
+      {/* Selections Panel — acima do grid */}
       {selectedPhotos.length > 0 && (
         <div className="border border-border rounded-md p-6 bg-surface/40">
           <div className="flex items-center justify-between mb-4">
@@ -671,6 +641,36 @@ export default function AlbumDetailPage() {
       {selectedPhotos.length === 0 && photos.length > 0 && (
         <div className="text-center py-6 border border-dashed border-[#E8E4E0] rounded text-sm text-[#6B6460]">
           A cliente ainda não fez seleções.
+        </div>
+      )}
+
+      {/* Photo Grid */}
+      {photos.length > 0 && (
+        <div>
+          <h2 className="font-display text-xl font-light mb-4">
+            Fotos ({totalPhotosRef.current > 0 ? totalPhotosRef.current : photos.length})
+          </h2>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={photos.map((p) => p.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {photos.map((photo) => (
+                  <SortablePhoto
+                    key={photo.id}
+                    photo={photo}
+                    isSelected={selections.has(photo.id)}
+                    onDelete={handleDeletePhoto}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+          <div ref={photosSentinelRef} className="flex justify-center py-4">
+            {loadingMorePhotos && <Loader2 size={18} className="animate-spin text-muted" />}
+          </div>
         </div>
       )}
 

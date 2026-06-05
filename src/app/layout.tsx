@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Cormorant_Garamond } from 'next/font/google'
 import { GeistSans } from 'geist/font/sans'
 import { Toaster } from 'sonner'
@@ -11,12 +11,28 @@ const cormorant = Cormorant_Garamond({
   display: 'swap',
 })
 
+export const viewport: Viewport = {
+  themeColor: '#6B1F35',
+  width: 'device-width',
+  initialScale: 1,
+}
+
 export const metadata: Metadata = {
   title: {
     default: 'Aline Viana Fotografias',
     template: '%s — Aline Viana Fotografias',
   },
   description: 'Galeria exclusiva de seleção de fotos — Aline Viana Fotografias.',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    title: 'AV Fotos',
+    statusBarStyle: 'black-translucent',
+  },
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,0 +1,24 @@
+{
+  "name": "Aline Viana Fotografias",
+  "short_name": "AV Fotos",
+  "description": "Galeria exclusiva de seleção de fotos",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FAF8F6",
+  "theme_color": "#6B1F35",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/fbf4c6cd-1451-495d-9aa4-e398d3d5157a.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
