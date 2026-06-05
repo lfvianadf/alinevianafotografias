@@ -422,6 +422,15 @@ export default function AlbumClient({ token }: { token: string }) {
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const expiredRef = useRef<Set<string>>(new Set())
   const isFirstFetch = useRef(true)
+  const lsKey = `album-sel-${token}`
+
+  const saveToStorage = useCallback((ids: Set<string>) => {
+    try { localStorage.setItem(lsKey, JSON.stringify(Array.from(ids))) } catch { /* ignore */ }
+  }, [lsKey])
+
+  const clearStorage = useCallback(() => {
+    try { localStorage.removeItem(lsKey) } catch { /* ignore */ }
+  }, [lsKey])
 
   const fetchPhotos = useCallback(async () => {
     const isFirst = isFirstFetch.current
@@ -438,16 +447,23 @@ export default function AlbumClient({ token }: { token: string }) {
         return
       }
 
-      // Sempre atualiza as URLs das fotos (podem ter expirado)
       setPhotos(data.photos)
 
-      // Só inicializa estado no primeiro carregamento
       if (isFirst) {
         isFirstFetch.current = false
         setAlbum(data.album)
         setLoading(false)
 
-        if (data.selectedPhotoIds?.length > 0) {
+        // Prioridade: localStorage (seleções em andamento) > banco (confirmadas)
+        const saved = (() => {
+          try { return JSON.parse(localStorage.getItem(lsKey) ?? 'null') } catch { return null }
+        })()
+
+        if (saved && Array.isArray(saved) && saved.length > 0) {
+          setSelections(new Set(saved))
+          // Se também há confirmadas no banco, mantém a flag mas não sobrescreve
+          if (data.selectedPhotoIds?.length > 0) setHadPreviousSelection(true)
+        } else if (data.selectedPhotoIds?.length > 0) {
           setSelections(new Set(data.selectedPhotoIds))
           setHadPreviousSelection(true)
         }
@@ -466,7 +482,7 @@ export default function AlbumClient({ token }: { token: string }) {
     } catch {
       if (isFirst) { setError('Não foi possível carregar o álbum. Tente novamente.'); setLoading(false) }
     }
-  }, [token])
+  }, [token, lsKey])
 
   useEffect(() => {
     fetchPhotos()
@@ -484,9 +500,10 @@ export default function AlbumClient({ token }: { token: string }) {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
+      saveToStorage(next)
       return next
     })
-  }, [])
+  }, [saveToStorage])
 
   const handleOpen = useCallback((index: number) => {
     setLightboxIndex(index)
@@ -505,6 +522,7 @@ export default function AlbumClient({ token }: { token: string }) {
       })
       const data = await res.json()
       if (!res.ok) { setSubmitError(data.error ?? 'Erro ao confirmar.'); setConfirming(false); return }
+      clearStorage()
       setDone(true)
     } catch {
       setSubmitError('Erro de rede. Tente novamente.')
