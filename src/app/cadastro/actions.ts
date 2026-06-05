@@ -51,8 +51,8 @@ export async function registerAction(formData: FormData) {
   const userId = data.user?.id
   if (!userId) return { error: 'Erro inesperado. Tente novamente.' }
 
-  // Inserir perfil
-  const { error: profileError } = await admin.from('photographers').insert({
+  // Upsert: cria ou atualiza o perfil (trigger pode ter inserido registro vazio)
+  const { error: profileError } = await admin.from('photographers').upsert({
     id: userId,
     name,
     email,
@@ -60,8 +60,6 @@ export async function registerAction(formData: FormData) {
   })
 
   if (profileError) {
-    // 23505 = trigger já inseriu o perfil automaticamente, não é erro
-    if (profileError.code === '23505') return { ok: true }
     await admin.auth.admin.deleteUser(userId)
     return { error: 'Erro ao salvar perfil. Tente novamente.' }
   }
