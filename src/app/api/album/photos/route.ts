@@ -65,17 +65,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ photos: [], hasMore: false, total })
     }
 
-    // Gera signed URLs apenas para este lote
+    // Gera signed URLs (full + thumbnail transformado) apenas para este lote
     const signedResults = await Promise.all(
       photos.map(async (photo) => {
-        const { data } = await supabase.storage
-          .from('albums')
-          .createSignedUrl(photo.storage_path, 21600)
+        const [{ data: full }, { data: thumb }] = await Promise.all([
+          supabase.storage.from('albums').createSignedUrl(photo.storage_path, 21600),
+          supabase.storage.from('albums').createSignedUrl(photo.storage_path, 21600, {
+            transform: { width: 400, height: 300, resize: 'cover', quality: 80 },
+          }),
+        ])
         return {
           id: photo.id,
           filename: photo.filename,
           order_index: photo.order_index,
-          signedUrl: data?.signedUrl ?? null,
+          signedUrl: full?.signedUrl ?? null,
+          thumbnailUrl: thumb?.signedUrl ?? null,
         }
       })
     )

@@ -17,6 +17,7 @@ type PhotoItem = {
   filename: string
   order_index: number
   signedUrl: string
+  thumbnailUrl: string | null
 }
 
 type AlbumMeta = {
@@ -207,8 +208,6 @@ const MemoPhoto = memo(function MemoPhoto(props: {
   onOpen: (index: number) => void
   onToggleSelect: (id: string) => void
   onActivateMode: () => void
-  watermark: string
-  logoImg: HTMLImageElement | null
 }) {
   const open = useCallback(() => props.onOpen(props.index), [props.onOpen, props.index])
   const toggle = useCallback(() => props.onToggleSelect(props.photo.id), [props.onToggleSelect, props.photo.id])
@@ -220,8 +219,6 @@ const MemoPhoto = memo(function MemoPhoto(props: {
       onOpen={open}
       onToggleSelect={toggle}
       onActivateMode={props.onActivateMode}
-      watermark={props.watermark}
-      logoImg={props.logoImg}
     />
   )
 })
@@ -233,8 +230,6 @@ const PhotoCard = memo(function PhotoCard({
   onOpen,
   onToggleSelect,
   onActivateMode,
-  watermark,
-  logoImg,
 }: {
   photo: PhotoItem
   isSelected: boolean
@@ -242,38 +237,10 @@ const PhotoCard = memo(function PhotoCard({
   onOpen: () => void
   onToggleSelect: () => void
   onActivateMode: () => void
-  watermark: string
-  logoImg: HTMLImageElement | null
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const [loaded, setLoaded] = useState(false)
-  const drawnUrlRef = useRef<string | null>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const didLongPress = useRef(false)
-
-  const paint = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    if (drawnUrlRef.current === photo.signedUrl && loaded) return
-
-    setLoaded(false)
-    const img = new window.Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => {
-      const maxW = 400
-      const scale = Math.min(1, maxW / img.naturalWidth)
-      canvas.width = Math.round(img.naturalWidth * scale)
-      canvas.height = Math.round(img.naturalHeight * scale)
-      const ctx = canvas.getContext('2d')!
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      drawWatermark(ctx, canvas.width, canvas.height, watermark, logoImg)
-      drawnUrlRef.current = photo.signedUrl
-      setLoaded(true)
-    }
-    img.src = photo.signedUrl
-  }, [photo.signedUrl, watermark, logoImg, loaded])
-
-  useEffect(() => { paint() }, [paint])
 
   function handleTouchStart() {
     didLongPress.current = false
@@ -312,13 +279,16 @@ const PhotoCard = memo(function PhotoCard({
     >
       <div className="aspect-[4/3] relative bg-[#EDE8E3]">
         {!loaded && <div className="absolute inset-0 bg-[#EDE8E3] animate-pulse" />}
-        <canvas
-          ref={canvasRef}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={photo.thumbnailUrl ?? photo.signedUrl}
+          alt={photo.filename}
           className={[
             'absolute inset-0 w-full h-full object-cover rounded',
             'transition-opacity duration-300',
             loaded ? 'opacity-100' : 'opacity-0',
           ].join(' ')}
+          onLoad={() => setLoaded(true)}
         />
       </div>
 
@@ -631,8 +601,6 @@ export default function AlbumClient({ token }: { token: string }) {
                   onOpen={handleOpen}
                   onToggleSelect={toggleSelection}
                   onActivateMode={activateMode}
-                  watermark={album.watermark}
-                  logoImg={logoImg}
                 />
               ))}
             </div>
