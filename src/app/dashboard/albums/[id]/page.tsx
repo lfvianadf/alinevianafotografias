@@ -173,6 +173,7 @@ export default function AlbumDetailPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [finalOpen, setFinalOpen] = useState(false)
   const [deliveryToken, setDeliveryToken] = useState<string | null>(null)
+  const [hasDelivery, setHasDelivery] = useState(false)
   const [copiedDelivery, setCopiedDelivery] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
@@ -188,7 +189,7 @@ export default function AlbumDetailPage() {
   )
 
   const loadData = useCallback(async () => {
-    const [albumRes, photosRes, selectionsRes] = await Promise.all([
+    const [albumRes, photosRes, selectionsRes, finalRes] = await Promise.all([
       supabase.from('albums').select('*').eq('id', albumId).single(),
       supabase
         .from('photos')
@@ -196,12 +197,14 @@ export default function AlbumDetailPage() {
         .eq('album_id', albumId)
         .order('order_index'),
       supabase.from('selections').select('*').eq('album_id', albumId),
+      supabase.from('final_photos').select('id').eq('album_id', albumId).limit(1),
     ])
 
     if (albumRes.data) {
       setAlbum(albumRes.data)
       setDeliveryToken(albumRes.data.delivery_token ?? null)
     }
+    setHasDelivery((finalRes.data?.length ?? 0) > 0)
 
     if (photosRes.data && photosRes.data.length > 0) {
       // Gera signed URLs em paralelo (1h de validade)
@@ -457,7 +460,7 @@ export default function AlbumDetailPage() {
               className="flex items-center gap-2 px-4 py-2 bg-[#0D0D0D] text-white text-xs rounded hover:bg-[#2a2a2a] transition-colors"
             >
               <Sparkles size={13} />
-              {deliveryToken ? 'Remontar ensaio final' : 'Montar ensaio final'}
+              {hasDelivery ? 'Remontar ensaio final' : 'Montar ensaio final'}
             </button>
 
             {album.status !== 'entregue' && (
@@ -494,7 +497,7 @@ export default function AlbumDetailPage() {
           description="Envie para a cliente escolher as fotos"
           url={`${typeof window !== 'undefined' ? window.location.origin : ''}/album/${album.access_token}`}
         />
-        {deliveryToken && (
+        {hasDelivery && deliveryToken && (
           <LinkCard
             label="Link do ensaio final"
             description="Fotos editadas para a cliente baixar"
@@ -636,7 +639,7 @@ export default function AlbumDetailPage() {
           album={album}
           open={finalOpen}
           onClose={() => setFinalOpen(false)}
-          onDeliveryCreated={(token) => setDeliveryToken(token)}
+          onDeliveryCreated={(token) => { setDeliveryToken(token); setHasDelivery(true) }}
         />
       )}
 
