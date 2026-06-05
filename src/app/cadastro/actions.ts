@@ -62,7 +62,7 @@ export async function registerAction(formData: FormData) {
   if (profileError) {
     // Desfaz criação do usuário para evitar orphan
     await admin.auth.admin.deleteUser(userId)
-    return { error: 'Erro ao salvar perfil. Tente novamente.' }
+    return { error: `Erro ao salvar perfil: ${profileError.message} (code: ${profileError.code})` }
   }
 
   return { ok: true }

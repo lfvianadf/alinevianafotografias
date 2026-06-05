@@ -2,8 +2,5 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "installCommand": "npm install --legacy-peer-deps",
-  "devCommand": "npm run dev",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/$1" }
-  ]
+  "devCommand": "npm run dev"
 }
