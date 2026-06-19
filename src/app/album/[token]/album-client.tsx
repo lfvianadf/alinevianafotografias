@@ -25,90 +25,14 @@ type AlbumMeta = {
   client_name: string
   max_selections: number
   status: string
-  watermark: string
-  logo_url: string | null
-}
-
-// ─── Watermark ────────────────────────────────────────────────────────────────
-
-function drawWatermark(
-  ctx: CanvasRenderingContext2D,
-  W: number,
-  H: number,
-  text: string,
-  logoImg: HTMLImageElement | null
-) {
-  ctx.save()
-  ctx.translate(W / 2, H / 2)
-  ctx.rotate(-25 * (Math.PI / 180))
-
-  const tileW = 180
-  const tileH = logoImg ? 90 : 60
-  const diagonal = Math.ceil(Math.sqrt(W * W + H * H))
-  const halfCols = Math.ceil(diagonal / tileW) + 1
-  const halfRows = Math.ceil(diagonal / tileH) + 1
-
-  ctx.globalAlpha = 0.28
-  ctx.fillStyle = '#0D0D0D'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'top'
-
-  for (let row = -halfRows; row <= halfRows; row++) {
-    for (let col = -halfCols; col <= halfCols; col++) {
-      const cx = col * tileW
-      const cy = row * tileH
-      let textY = cy + tileH / 2 - 7
-
-      if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
-        const maxW = 120, maxH = 60
-        const aspect = logoImg.naturalWidth / logoImg.naturalHeight
-        let lw = maxW, lh = lw / aspect
-        if (lh > maxH) { lh = maxH; lw = lh * aspect }
-        ctx.drawImage(logoImg, cx - lw / 2, cy - lh / 2 - 8, lw, lh)
-        textY = cy - lh / 2 - 8 + lh + 5
-      }
-
-      ctx.font = '13px Georgia, "Cormorant Garamond", serif'
-      ctx.fillText(text || '© fotógrafa', cx, textY)
-    }
-  }
-  ctx.restore()
 }
 
 // ─── Lightbox ─────────────────────────────────────────────────────────────────
 
-function LightboxCanvas({
-  photo,
-  watermark,
-  logoImg,
-}: {
-  photo: PhotoItem
-  watermark: string
-  logoImg: HTMLImageElement | null
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+function LightboxImage({ photo }: { photo: PhotoItem }) {
   const [loaded, setLoaded] = useState(false)
 
-  useEffect(() => {
-    setLoaded(false)
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const img = new window.Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => {
-      // Limita a 1920px para o lightbox (maior que o grid)
-      const maxW = 1920
-      const scale = Math.min(1, maxW / img.naturalWidth)
-      canvas.width = Math.round(img.naturalWidth * scale)
-      canvas.height = Math.round(img.naturalHeight * scale)
-      const ctx = canvas.getContext('2d')!
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      drawWatermark(ctx, canvas.width, canvas.height, watermark, logoImg)
-      setLoaded(true)
-    }
-    img.src = photo.signedUrl
-  }, [photo.signedUrl, watermark, logoImg])
+  useEffect(() => { setLoaded(false) }, [photo.signedUrl])
 
   return (
     <div className="relative flex items-center justify-center min-w-[200px] min-h-[150px]">
@@ -117,10 +41,13 @@ function LightboxCanvas({
           <Loader2 size={24} className="animate-spin text-white/40" />
         </div>
       )}
-      <canvas
-        ref={canvasRef}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={photo.signedUrl}
+        alt={photo.filename}
+        onLoad={() => setLoaded(true)}
         className={[
-          'max-h-[85vh] max-w-[85vw] rounded',
+          'max-h-[85vh] max-w-[85vw] rounded object-contain',
           'transition-opacity duration-300',
           loaded ? 'opacity-100' : 'opacity-0',
         ].join(' ')}
@@ -132,16 +59,12 @@ function LightboxCanvas({
 function Lightbox({
   photos,
   index,
-  watermark,
-  logoImg,
   onClose,
   onPrev,
   onNext,
 }: {
   photos: PhotoItem[]
   index: number
-  watermark: string
-  logoImg: HTMLImageElement | null
   onClose: () => void
   onPrev: () => void
   onNext: () => void
@@ -175,11 +98,7 @@ function Lightbox({
       )}
 
       <div onClick={(e) => e.stopPropagation()}>
-        <LightboxCanvas
-          photo={photos[index]}
-          watermark={watermark}
-          logoImg={logoImg}
-        />
+        <LightboxImage photo={photos[index]} />
       </div>
 
       {index < photos.length - 1 && (
@@ -374,7 +293,6 @@ const BATCH = 10
 export default function AlbumClient({ token }: { token: string }) {
   const [photos, setPhotos] = useState<PhotoItem[]>([])
   const [album, setAlbum] = useState<AlbumMeta | null>(null)
-  const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null)
   const [selections, setSelections] = useState<Set<string>>(new Set())
   const [hadPreviousSelection, setHadPreviousSelection] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -437,14 +355,6 @@ export default function AlbumClient({ token }: { token: string }) {
         } else if (data.selectedPhotoIds?.length > 0) {
           setSelections(new Set(data.selectedPhotoIds))
           setHadPreviousSelection(true)
-        }
-
-        if (data.album?.logo_url) {
-          const img = new window.Image()
-          img.crossOrigin = 'anonymous'
-          img.onload = () => setLogoImg(img)
-          img.onerror = () => setLogoImg(null)
-          img.src = data.album.logo_url
         }
       } else {
         setPhotos(prev => [...prev, ...data.photos])
@@ -644,8 +554,6 @@ export default function AlbumClient({ token }: { token: string }) {
         <Lightbox
           photos={photos}
           index={lightboxIndex}
-          watermark={album.watermark}
-          logoImg={logoImg}
           onClose={() => setLightboxIndex(null)}
           onPrev={() => setLightboxIndex(i => i !== null && i > 0 ? i - 1 : i)}
           onNext={() => setLightboxIndex(i => i !== null && i < photos.length - 1 ? i + 1 : i)}

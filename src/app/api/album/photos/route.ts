@@ -9,6 +9,34 @@ function adminClient() {
   )
 }
 
+// Reaproveita a mesma signed URL entre requisições (enquanto a instância do servidor
+// estiver "quente") para que o navegador da cliente reconheça a URL como já vista e
+// sirva do cache HTTP em vez de baixar a imagem de novo a cada revisita à galeria.
+const SIGNED_URL_TTL = 24 * 60 * 60 // 24h
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>()
+
+async function getCachedSignedUrl(
+  supabase: ReturnType<typeof adminClient>,
+  storagePath: string,
+  variantKey: string,
+  transform?: { width: number; height: number; resize: 'cover'; quality: number }
+) {
+  const cacheKey = `${storagePath}::${variantKey}`
+  const cached = signedUrlCache.get(cacheKey)
+  const now = Date.now()
+  if (cached && cached.expiresAt > now + 5 * 60 * 1000) {
+    return cached.url
+  }
+
+  const { data } = await supabase.storage
+    .from('albums')
+    .createSignedUrl(storagePath, SIGNED_URL_TTL, transform ? { transform } : undefined)
+
+  if (!data?.signedUrl) return null
+  signedUrlCache.set(cacheKey, { url: data.signedUrl, expiresAt: now + SIGNED_URL_TTL * 1000 })
+  return data.signedUrl
+}
+
 export async function POST(request: Request) {
   try {
     const { token, offset = 0, limit = 10 } = await request.json()
@@ -22,10 +50,7 @@ export async function POST(request: Request) {
     // Fetch album + photographer via join
     const { data: album, error: albumError } = await supabase
       .from('albums')
-      .select(
-        `id, name, client_name, max_selections, status, expires_at, photographer_id,
-         photographers!albums_photographer_id_fkey(watermark, logo_url)`
-      )
+      .select('id, name, client_name, max_selections, status, expires_at, photographer_id')
       .eq('access_token', token)
       .single()
 
@@ -65,21 +90,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ photos: [], hasMore: false, total })
     }
 
-    // Gera signed URLs (full + thumbnail transformado) apenas para este lote
+    // Gera signed URLs (full + thumbnail transformado) apenas para este lote,
+    // reaproveitando URLs já emitidas para favorecer o cache HTTP do navegador
     const signedResults = await Promise.all(
       photos.map(async (photo) => {
-        const [{ data: full }, { data: thumb }] = await Promise.all([
-          supabase.storage.from('albums').createSignedUrl(photo.storage_path, 21600),
-          supabase.storage.from('albums').createSignedUrl(photo.storage_path, 21600, {
-            transform: { width: 400, height: 300, resize: 'cover', quality: 80 },
+        const [full, thumb] = await Promise.all([
+          getCachedSignedUrl(supabase, photo.storage_path, 'full'),
+          getCachedSignedUrl(supabase, photo.storage_path, 'thumb', {
+            width: 400, height: 300, resize: 'cover', quality: 80,
           }),
         ])
         return {
           id: photo.id,
           filename: photo.filename,
           order_index: photo.order_index,
-          signedUrl: full?.signedUrl ?? null,
-          thumbnailUrl: thumb?.signedUrl ?? null,
+          signedUrl: full,
+          thumbnailUrl: thumb,
         }
       })
     )
@@ -111,15 +137,11 @@ function buildAlbumPayload(album: {
   client_name: string
   max_selections: number
   status: string
-  photographers: unknown
 }) {
-  const pg = album.photographers as { watermark?: string; logo_url?: string } | null
   return {
     name: album.name,
     client_name: album.client_name,
     max_selections: album.max_selections,
     status: album.status,
-    watermark: pg?.watermark ?? '© fotógrafa',
-    logo_url: pg?.logo_url ?? null,
   }
 }

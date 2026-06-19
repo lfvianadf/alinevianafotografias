@@ -9,6 +9,23 @@ function adminClient() {
   )
 }
 
+// Reaproveita a mesma signed URL entre requisições para favorecer o cache HTTP
+// do navegador da cliente em revisitas à página de entrega.
+const SIGNED_URL_TTL = 24 * 60 * 60 // 24h
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>()
+
+async function getCachedSignedUrl(supabase: ReturnType<typeof adminClient>, storagePath: string) {
+  const cached = signedUrlCache.get(storagePath)
+  const now = Date.now()
+  if (cached && cached.expiresAt > now + 5 * 60 * 1000) {
+    return cached.url
+  }
+  const { data } = await supabase.storage.from('albums').createSignedUrl(storagePath, SIGNED_URL_TTL)
+  if (!data?.signedUrl) return null
+  signedUrlCache.set(storagePath, { url: data.signedUrl, expiresAt: now + SIGNED_URL_TTL * 1000 })
+  return data.signedUrl
+}
+
 export async function POST(request: Request) {
   try {
     const { token } = await request.json()
@@ -36,10 +53,8 @@ export async function POST(request: Request) {
 
     const photosWithUrls = await Promise.all(
       finalPhotos.map(async (photo) => {
-        const { data } = await supabase.storage
-          .from('albums')
-          .createSignedUrl(photo.storage_path, 3600)
-        return { id: photo.id, filename: photo.filename, signedUrl: data?.signedUrl ?? '' }
+        const signedUrl = await getCachedSignedUrl(supabase, photo.storage_path)
+        return { id: photo.id, filename: photo.filename, signedUrl: signedUrl ?? '' }
       })
     )
 

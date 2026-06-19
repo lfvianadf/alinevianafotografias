@@ -686,6 +686,7 @@ export default function AlbumDetailPage() {
       {album && (
         <FinalDeliveryDialog
           album={album}
+          selectedPhotos={selectedPhotos}
           open={finalOpen}
           onClose={() => setFinalOpen(false)}
           onDeliveryCreated={(token) => { setDeliveryToken(token); setHasDelivery(true) }}
