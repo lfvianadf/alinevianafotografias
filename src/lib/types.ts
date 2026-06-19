@@ -14,7 +14,7 @@ export type Album = {
   photographer_id: string
   name: string
   client_name: string
-  client_email: string | null
+  client_phone: string | null
   access_token: string
   max_selections: number
   status: AlbumStatus
@@ -56,7 +56,7 @@ export type FinalPhoto = {
 export type CreateAlbumData = {
   name: string
   client_name: string
-  client_email: string
+  client_phone: string
   max_selections: number
   expires_at: string | null
 }

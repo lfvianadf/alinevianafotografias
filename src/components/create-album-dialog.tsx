@@ -14,7 +14,7 @@ interface Props {
 const empty: CreateAlbumData = {
   name: '',
   client_name: '',
-  client_email: '',
+  client_phone: '',
   max_selections: 20,
   expires_at: null,
 }
@@ -41,7 +41,7 @@ export default function CreateAlbumDialog({ open, onClose, onCreated }: Props) {
       photographer_id: user.id,
       name: form.name,
       client_name: form.client_name,
-      client_email: form.client_email || null,
+      client_phone: form.client_phone || null,
       max_selections: form.max_selections,
       expires_at: form.expires_at || null,
     })
@@ -97,12 +97,12 @@ export default function CreateAlbumDialog({ open, onClose, onCreated }: Props) {
             />
           </Field>
 
-          <Field label="Email da cliente">
+          <Field label="Telefone da cliente">
             <input
-              type="email"
-              value={form.client_email}
-              onChange={(e) => set('client_email', e.target.value)}
-              placeholder="ana@email.com"
+              type="tel"
+              value={form.client_phone}
+              onChange={(e) => set('client_phone', e.target.value)}
+              placeholder="(11) 91234-5678"
               className="field-input"
             />
           </Field>

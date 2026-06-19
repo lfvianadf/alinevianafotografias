@@ -19,7 +19,7 @@ const inputCls =
 export default function EditAlbumDialog({ album, open, onClose, onSaved }: Props) {
   const [name, setName] = useState(album.name)
   const [clientName, setClientName] = useState(album.client_name)
-  const [clientEmail, setClientEmail] = useState(album.client_email ?? '')
+  const [clientPhone, setClientPhone] = useState(album.client_phone ?? '')
   const [maxSelections, setMaxSelections] = useState(album.max_selections)
   const [expiresAt, setExpiresAt] = useState(
     album.expires_at ? album.expires_at.slice(0, 10) : ''
@@ -30,7 +30,7 @@ export default function EditAlbumDialog({ album, open, onClose, onSaved }: Props
   useEffect(() => {
     setName(album.name)
     setClientName(album.client_name)
-    setClientEmail(album.client_email ?? '')
+    setClientPhone(album.client_phone ?? '')
     setMaxSelections(album.max_selections)
     setExpiresAt(album.expires_at ? album.expires_at.slice(0, 10) : '')
   }, [album])
@@ -45,7 +45,7 @@ export default function EditAlbumDialog({ album, open, onClose, onSaved }: Props
       .update({
         name: name.trim(),
         client_name: clientName.trim(),
-        client_email: clientEmail.trim() || null,
+        client_phone: clientPhone.trim() || null,
         max_selections: maxSelections,
         expires_at: expiresAt || null,
       })
@@ -91,9 +91,9 @@ export default function EditAlbumDialog({ album, open, onClose, onSaved }: Props
               onChange={(e) => setClientName(e.target.value)} className={inputCls} />
           </Field>
 
-          <Field label="Email da cliente">
-            <input type="email" value={clientEmail}
-              onChange={(e) => setClientEmail(e.target.value)}
+          <Field label="Telefone da cliente">
+            <input type="tel" value={clientPhone}
+              onChange={(e) => setClientPhone(e.target.value)}
               placeholder="opcional" className={inputCls} />
           </Field>
 

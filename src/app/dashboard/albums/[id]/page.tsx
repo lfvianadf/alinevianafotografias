@@ -46,6 +46,7 @@ import FinalDeliveryDialog from '@/components/final-delivery-dialog'
 // ─── Sortable Photo Card ────────────────────────────────────────────────────
 
 type PhotoWithUrl = Photo & { signedUrl: string }
+type FinalPhotoWithUrl = { id: string; storage_path: string; filename: string; signedUrl: string }
 
 function SortablePhoto({
   photo,
@@ -174,6 +175,8 @@ export default function AlbumDetailPage() {
   const [finalOpen, setFinalOpen] = useState(false)
   const [deliveryToken, setDeliveryToken] = useState<string | null>(null)
   const [hasDelivery, setHasDelivery] = useState(false)
+  const [finalPhotos, setFinalPhotos] = useState<FinalPhotoWithUrl[]>([])
+  const [deletingFinalId, setDeletingFinalId] = useState<string | null>(null)
   const [copiedDelivery, setCopiedDelivery] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
@@ -233,11 +236,35 @@ export default function AlbumDetailPage() {
     hasMorePhotosRef.current = hasMore
   }, [albumId])
 
+  const loadFinalPhotos = useCallback(async () => {
+    const { data } = await supabase
+      .from('final_photos')
+      .select('id, storage_path, filename')
+      .eq('album_id', albumId)
+      .order('order_index')
+
+    if (!data || data.length === 0) {
+      setFinalPhotos([])
+      setHasDelivery(false)
+      return
+    }
+
+    const withUrls = await Promise.all(
+      data.map(async (photo) => {
+        const { data: signed } = await supabase.storage
+          .from('albums')
+          .createSignedUrl(photo.storage_path, 3600)
+        return { ...photo, signedUrl: signed?.signedUrl ?? '' }
+      })
+    )
+    setFinalPhotos(withUrls)
+    setHasDelivery(true)
+  }, [albumId])
+
   const loadData = useCallback(async () => {
-    const [albumRes, selectionsRes, finalRes, countRes] = await Promise.all([
+    const [albumRes, selectionsRes, countRes] = await Promise.all([
       supabase.from('albums').select('*').eq('id', albumId).single(),
       supabase.from('selections').select('*').eq('album_id', albumId),
-      supabase.from('final_photos').select('id').eq('album_id', albumId).limit(1),
       supabase.from('photos').select('*', { count: 'exact', head: true }).eq('album_id', albumId),
     ])
 
@@ -245,7 +272,7 @@ export default function AlbumDetailPage() {
       setAlbum(albumRes.data)
       setDeliveryToken(albumRes.data.delivery_token ?? null)
     }
-    setHasDelivery((finalRes.data?.length ?? 0) > 0)
+    await loadFinalPhotos()
     if (selectionsRes.data) {
       setSelections(new Set(selectionsRes.data.map((s: Selection) => s.photo_id)))
     }
@@ -253,7 +280,7 @@ export default function AlbumDetailPage() {
     totalPhotosRef.current = countRes.count ?? 0
     await loadPhotosBatch(0)
     setLoading(false)
-  }, [albumId, loadPhotosBatch])
+  }, [albumId, loadPhotosBatch, loadFinalPhotos])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -376,6 +403,32 @@ export default function AlbumDetailPage() {
     toast.success('Foto removida.')
   }
 
+  async function handleDeleteFinalPhoto(photo: FinalPhotoWithUrl) {
+    if (!confirm(`Remover "${photo.filename}" do ensaio final já publicado?`)) return
+    setDeletingFinalId(photo.id)
+
+    // Só remove do Storage as fotos enviadas na entrega (finals/); fotos reaproveitadas
+    // do ensaio prévio continuam existindo lá, então não devem ser apagadas aqui.
+    if (photo.storage_path.startsWith(`finals/${albumId}/`)) {
+      await supabase.storage.from('albums').remove([photo.storage_path])
+    }
+    const { error } = await supabase.from('final_photos').delete().eq('id', photo.id)
+
+    setDeletingFinalId(null)
+
+    if (error) {
+      toast.error('Não foi possível remover a foto.')
+      return
+    }
+
+    setFinalPhotos((prev) => {
+      const next = prev.filter((p) => p.id !== photo.id)
+      if (next.length === 0) setHasDelivery(false)
+      return next
+    })
+    toast.success('Foto removida do ensaio final.')
+  }
+
   async function handleDownloadSelected() {
     const selected = photos.filter((p) => selections.has(p.id))
     if (selected.length === 0) return
@@ -476,7 +529,7 @@ export default function AlbumDetailPage() {
             </div>
             <p className="text-sm text-muted">
               {album.client_name}
-              {album.client_email && ` · ${album.client_email}`}
+              {album.client_phone && ` · ${album.client_phone}`}
             </p>
             <p className="text-xs text-muted mt-1">
               Criado em {formatDate(album.created_at)} · Mínimo:{' '}
@@ -552,6 +605,33 @@ export default function AlbumDetailPage() {
           />
         )}
       </div>
+
+      {/* Ensaio final — gerenciar fotos já publicadas */}
+      {finalPhotos.length > 0 && (
+        <div className="border border-border rounded-md p-6 bg-surface/40">
+          <h2 className="font-display text-xl font-light mb-4">
+            Fotos do ensaio final ({finalPhotos.length})
+          </h2>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+            {finalPhotos.map((photo) => (
+              <div key={photo.id} className="relative group aspect-square rounded overflow-hidden border border-[#E8E4E0]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo.signedUrl} alt={photo.filename} className="w-full h-full object-cover" loading="lazy" />
+                <button
+                  onClick={() => handleDeleteFinalPhoto(photo)}
+                  disabled={deletingFinalId === photo.id}
+                  className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-60"
+                  aria-label="Remover foto do ensaio final"
+                >
+                  {deletingFinalId === photo.id
+                    ? <Loader2 size={13} className="animate-spin" />
+                    : <Trash2 size={13} />}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Upload Zone */}
       <div
@@ -689,7 +769,7 @@ export default function AlbumDetailPage() {
           selectedPhotos={selectedPhotos}
           open={finalOpen}
           onClose={() => setFinalOpen(false)}
-          onDeliveryCreated={(token) => { setDeliveryToken(token); setHasDelivery(true) }}
+          onDeliveryCreated={(token) => { setDeliveryToken(token); loadFinalPhotos() }}
         />
       )}
 

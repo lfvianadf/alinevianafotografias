@@ -60,7 +60,7 @@ export default function NewAlbumPage() {
   // Step 1 — info
   const [name, setName] = useState('')
   const [clientName, setClientName] = useState('')
-  const [clientEmail, setClientEmail] = useState('')
+  const [clientPhone, setClientPhone] = useState('')
   const [maxSelections, setMaxSelections] = useState(20)
   const [expiresAt, setExpiresAt] = useState('')
   const [savingInfo, setSavingInfo] = useState(false)
@@ -91,7 +91,7 @@ export default function NewAlbumPage() {
         photographer_id: user.id,
         name: name.trim(),
         client_name: clientName.trim(),
-        client_email: clientEmail.trim() || null,
+        client_phone: clientPhone.trim() || null,
         max_selections: maxSelections,
         expires_at: expiresAt || null,
       })
@@ -201,11 +201,11 @@ export default function NewAlbumPage() {
             />
           </Field>
 
-          <Field label="Email da cliente">
+          <Field label="Telefone da cliente">
             <input
-              type="email" value={clientEmail}
-              onChange={(e) => setClientEmail(e.target.value)}
-              placeholder="ana@email.com"
+              type="tel" value={clientPhone}
+              onChange={(e) => setClientPhone(e.target.value)}
+              placeholder="(11) 91234-5678"
               className={inputCls}
             />
           </Field>
