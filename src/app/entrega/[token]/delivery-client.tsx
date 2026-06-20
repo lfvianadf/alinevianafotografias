@@ -9,6 +9,7 @@ type FinalPhotoItem = {
   id: string
   filename: string
   signedUrl: string
+  edited: boolean
 }
 
 type DeliveryMeta = {
@@ -134,6 +135,14 @@ export default function DeliveryClient({ token }: { token: string }) {
                     loading="lazy"
                   />
                 </div>
+                <span
+                  className={[
+                    'absolute top-2 left-2 text-[10px] tracking-widest uppercase px-2 py-1 rounded-full',
+                    photo.edited ? 'bg-[#6B1F35] text-white' : 'bg-white/90 text-[#6B6460]',
+                  ].join(' ')}
+                >
+                  {photo.edited ? 'Editada' : 'Original'}
+                </span>
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white rounded-full p-2 shadow">
                     <Download size={16} className="text-[#6B1F35]" />

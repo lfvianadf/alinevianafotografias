@@ -767,6 +767,7 @@ export default function AlbumDetailPage() {
         <FinalDeliveryDialog
           album={album}
           selectedPhotos={selectedPhotos}
+          existingFinalPaths={finalPhotos.map((p) => p.storage_path)}
           open={finalOpen}
           onClose={() => setFinalOpen(false)}
           onDeliveryCreated={(token) => { setDeliveryToken(token); loadFinalPhotos() }}

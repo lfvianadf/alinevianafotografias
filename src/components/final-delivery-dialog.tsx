@@ -5,23 +5,21 @@ import { X, Upload, Loader2, Copy, Check, ImagePlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Album } from '@/lib/types'
-import { buildClientAlbumUrl } from '@/lib/utils'
 
 type SelectedPhoto = { id: string; storage_path: string; filename: string; signedUrl: string }
 
 interface Props {
   album: Album
   selectedPhotos: SelectedPhoto[]
+  existingFinalPaths: string[]
   open: boolean
   onClose: () => void
   onDeliveryCreated?: (token: string) => void
 }
 
-export default function FinalDeliveryDialog({ album, selectedPhotos, open, onClose, onDeliveryCreated }: Props) {
+export default function FinalDeliveryDialog({ album, selectedPhotos, existingFinalPaths, open, onClose, onDeliveryCreated }: Props) {
   const [files, setFiles] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
-  // ids das fotos selecionadas que serão reaproveitadas sem edição (não geram novo upload)
-  const [reusedIds, setReusedIds] = useState<Set<string>>(new Set())
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [deliveryToken, setDeliveryToken] = useState<string | null>(null)
@@ -32,20 +30,10 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, open, onClo
     if (!open) {
       setFiles([])
       setPreviews([])
-      setReusedIds(new Set())
       setDeliveryToken(null)
       setProgress(0)
     }
   }, [open])
-
-  function toggleReused(id: string) {
-    setReusedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
 
   useEffect(() => {
     const urls = files.map((f) => URL.createObjectURL(f))
@@ -58,35 +46,31 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, open, onClo
     e.target.value = ''
   }
 
+  const existingPathSet = new Set(existingFinalPaths)
+  // Fotos selecionadas pela cliente que ainda não constam no ensaio final: entram
+  // automaticamente, sem edição, para preencher a entrega mesmo se nada for enviado aqui.
+  const pendingReuse = selectedPhotos.filter((p) => !existingPathSet.has(p.storage_path))
+  const hasNothingToPublish = files.length === 0 && pendingReuse.length === 0
+
   async function handleUpload() {
-    const reusedPhotos = selectedPhotos.filter((p) => reusedIds.has(p.id))
-    if (files.length === 0 && reusedPhotos.length === 0) return
+    if (hasNothingToPublish) return
     setUploading(true)
     setProgress(0)
 
     const supabase = createClient()
 
-    // Deleta fotos finais anteriores deste álbum (apenas as que estavam em finals/, nunca os originais reaproveitados)
-    const { data: existing } = await supabase
+    const { count: currentCount } = await supabase
       .from('final_photos')
-      .select('storage_path')
+      .select('*', { count: 'exact', head: true })
       .eq('album_id', album.id)
 
-    if (existing && existing.length > 0) {
-      const ownedPaths = existing
-        .map((p: { storage_path: string }) => p.storage_path)
-        .filter((path: string) => path.startsWith(`finals/${album.id}/`))
-      if (ownedPaths.length > 0) {
-        await supabase.storage.from('albums').remove(ownedPaths)
-      }
-      await supabase.from('final_photos').delete().eq('album_id', album.id)
-    }
-
     const entries: { storage_path: string; filename: string; order_index: number }[] = []
+    let nextOrder = currentCount ?? 0
 
-    // Fotos reaproveitadas do ensaio prévio: apontam para o arquivo já existente, sem novo upload
-    for (const photo of reusedPhotos) {
-      entries.push({ storage_path: photo.storage_path, filename: photo.filename, order_index: entries.length })
+    // Fotos selecionadas pela cliente ainda não publicadas: apontam para o arquivo já
+    // existente no ensaio inicial, sem gerar novo upload
+    for (const photo of pendingReuse) {
+      entries.push({ storage_path: photo.storage_path, filename: photo.filename, order_index: nextOrder++ })
     }
 
     for (let i = 0; i < files.length; i++) {
@@ -97,7 +81,7 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, open, onClo
 
       const { error } = await supabase.storage.from('albums').upload(path, file)
       if (!error) {
-        entries.push({ storage_path: path, filename: file.name, order_index: entries.length })
+        entries.push({ storage_path: path, filename: file.name, order_index: nextOrder++ })
       }
       setProgress(Math.round(((i + 1) / Math.max(files.length, 1)) * 100))
     }
@@ -143,7 +127,7 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, open, onClo
               Ensaio final
             </h2>
             <p className="text-xs text-[#6B6460] mt-0.5">
-              Fotos editadas sem marca d'água para a cliente baixar
+              Envie as fotos editadas. As demais selecionadas pela cliente entram sem edição.
             </p>
           </div>
           {!uploading && (
@@ -154,43 +138,6 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, open, onClo
         </div>
 
         <div className="px-6 py-5 flex-1 overflow-y-auto space-y-5">
-          {/* Fotos selecionadas pela cliente que não foram editadas: reaproveitar sem novo upload */}
-          {!deliveryToken && selectedPhotos.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs tracking-widest uppercase text-[#6B6460]">
-                Sem edição — reaproveitar do ensaio prévio
-              </p>
-              <p className="text-[11px] text-[#6B6460]">
-                Marque as fotos selecionadas pela cliente que vão para a entrega final sem edição. Elas não geram novo upload.
-              </p>
-              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
-                {selectedPhotos.map((photo) => {
-                  const isReused = reusedIds.has(photo.id)
-                  return (
-                    <button
-                      key={photo.id}
-                      type="button"
-                      onClick={() => toggleReused(photo.id)}
-                      disabled={uploading}
-                      className={[
-                        'relative aspect-square rounded overflow-hidden border-2 transition-colors',
-                        isReused ? 'border-[#6B1F35]' : 'border-transparent',
-                      ].join(' ')}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={photo.signedUrl} alt={photo.filename} className="w-full h-full object-cover" />
-                      {isReused && (
-                        <div className="absolute inset-0 bg-[#6B1F35]/20 flex items-center justify-center">
-                          <Check size={18} className="text-white drop-shadow" />
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Seletor de arquivos */}
           {!deliveryToken && (
             <div>
@@ -213,8 +160,14 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, open, onClo
                     ? `${files.length} foto${files.length !== 1 ? 's' : ''} selecionada${files.length !== 1 ? 's' : ''} — clique para trocar`
                     : 'Clique para selecionar as fotos editadas'}
                 </span>
-                <span className="text-xs text-[#6B6460]/60">JPG, PNG — múltiplos arquivos</span>
+                <span className="text-xs text-[#6B6460]/60">JPG, PNG — múltiplos arquivos (opcional)</span>
               </button>
+              {pendingReuse.length > 0 && (
+                <p className="text-[11px] text-[#6B6460] mt-2">
+                  {pendingReuse.length} foto{pendingReuse.length !== 1 ? 's' : ''} selecionada{pendingReuse.length !== 1 ? 's' : ''}
+                  {' '}pela cliente {pendingReuse.length !== 1 ? 'entrarão' : 'entrará'} automaticamente, mesmo sem edição.
+                </p>
+              )}
             </div>
           )}
 
@@ -279,7 +232,7 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, open, onClo
             )}
             <button
               onClick={handleUpload}
-              disabled={(files.length === 0 && reusedIds.size === 0) || uploading}
+              disabled={hasNothingToPublish || uploading}
               className="flex items-center gap-2 px-6 py-2 bg-[#6B1F35] text-white text-xs rounded hover:bg-[#3D1020] transition-colors disabled:opacity-60"
             >
               {uploading

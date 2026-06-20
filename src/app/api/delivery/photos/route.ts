@@ -54,7 +54,8 @@ export async function POST(request: Request) {
     const photosWithUrls = await Promise.all(
       finalPhotos.map(async (photo) => {
         const signedUrl = await getCachedSignedUrl(supabase, photo.storage_path)
-        return { id: photo.id, filename: photo.filename, signedUrl: signedUrl ?? '' }
+        const edited = photo.storage_path.startsWith(`finals/${album.id}/`)
+        return { id: photo.id, filename: photo.filename, signedUrl: signedUrl ?? '', edited }
       })
     )
 
