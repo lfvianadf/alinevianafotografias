@@ -92,14 +92,23 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
       )
     }
 
-    // Busca o delivery_token do álbum (já gerado pelo banco)
-    const { data: albumData } = await supabase
+    // Garante que o álbum tem um delivery_token; gera um se ainda não existir
+    let { data: albumData } = await supabase
       .from('albums')
       .select('delivery_token')
       .eq('id', album.id)
       .single()
 
-    const token = albumData?.delivery_token ?? null
+    let token = albumData?.delivery_token ?? null
+
+    if (!token) {
+      // Gera token aleatório de 32 chars e persiste no álbum
+      token = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+      await supabase.from('albums').update({ delivery_token: token }).eq('id', album.id)
+    }
+
     setDeliveryToken(token)
     if (token) onDeliveryCreated?.(token)
     setUploading(false)
