@@ -6,18 +6,15 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Album } from '@/lib/types'
 
-type SelectedPhoto = { id: string; storage_path: string; filename: string; signedUrl: string }
-
 interface Props {
   album: Album
-  selectedPhotos: SelectedPhoto[]
   existingFinalPaths: string[]
   open: boolean
   onClose: () => void
   onDeliveryCreated?: (token: string) => void
 }
 
-export default function FinalDeliveryDialog({ album, selectedPhotos, existingFinalPaths, open, onClose, onDeliveryCreated }: Props) {
+export default function FinalDeliveryDialog({ album, existingFinalPaths, open, onClose, onDeliveryCreated }: Props) {
   const [files, setFiles] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
@@ -46,19 +43,22 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
     e.target.value = ''
   }
 
-  const existingPathSet = new Set(existingFinalPaths)
-  // Fotos selecionadas pela cliente que ainda não constam no ensaio final: entram
-  // automaticamente, sem edição, para preencher a entrega mesmo se nada for enviado aqui.
-  const pendingReuse = selectedPhotos.filter((p) => !existingPathSet.has(p.storage_path))
-  const hasNothingToPublish = files.length === 0 && pendingReuse.length === 0
-
   async function handleUpload() {
-    if (hasNothingToPublish) return
     setUploading(true)
     setProgress(0)
 
     const supabase = createClient()
 
+    // Busca TODAS as fotos do ensaio inicial
+    const { data: allPhotos } = await supabase
+      .from('photos')
+      .select('id, storage_path, filename, order_index')
+      .eq('album_id', album.id)
+      .order('order_index')
+
+    const existingPathSet = new Set(existingFinalPaths)
+
+    // Conta quantas entradas já existem para continuar o order_index
     const { count: currentCount } = await supabase
       .from('final_photos')
       .select('*', { count: 'exact', head: true })
@@ -67,13 +67,16 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
     const entries: { storage_path: string; filename: string; order_index: number }[] = []
     let nextOrder = currentCount ?? 0
 
-    // Fotos selecionadas pela cliente ainda não publicadas: apontam para o arquivo já
-    // existente no ensaio inicial, sem gerar novo upload
-    for (const photo of pendingReuse) {
-      entries.push({ storage_path: photo.storage_path, filename: photo.filename, order_index: nextOrder++ })
+    // Todas as fotos do ensaio inicial que ainda não estão no final entram automaticamente
+    for (const photo of allPhotos ?? []) {
+      if (!existingPathSet.has(photo.storage_path)) {
+        entries.push({ storage_path: photo.storage_path, filename: photo.filename, order_index: nextOrder++ })
+      }
     }
 
-    for (let i = 0; i < files.length; i++) {
+    // Fotos editadas enviadas pela fotógrafa
+    const totalFiles = files.length
+    for (let i = 0; i < totalFiles; i++) {
       const file = files[i]
       const ext = file.name.split('.').pop() ?? 'jpg'
       const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
@@ -83,7 +86,7 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
       if (!error) {
         entries.push({ storage_path: path, filename: file.name, order_index: nextOrder++ })
       }
-      setProgress(Math.round(((i + 1) / Math.max(files.length, 1)) * 100))
+      setProgress(Math.round(((i + 1) / Math.max(totalFiles, 1)) * 100))
     }
 
     if (entries.length > 0) {
@@ -92,8 +95,8 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
       )
     }
 
-    // Garante que o álbum tem um delivery_token; gera um se ainda não existir
-    let { data: albumData } = await supabase
+    // Garante delivery_token no álbum
+    const { data: albumData } = await supabase
       .from('albums')
       .select('delivery_token')
       .eq('id', album.id)
@@ -102,7 +105,6 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
     let token = albumData?.delivery_token ?? null
 
     if (!token) {
-      // Gera token aleatório de 32 chars e persiste no álbum
       token = Array.from(crypto.getRandomValues(new Uint8Array(24)))
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('')
@@ -112,7 +114,7 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
     setDeliveryToken(token)
     if (token) onDeliveryCreated?.(token)
     setUploading(false)
-    toast.success(`${entries.length} foto${entries.length !== 1 ? 's' : ''} no ensaio final.`)
+    toast.success(`Ensaio final publicado com ${entries.length} foto${entries.length !== 1 ? 's' : ''}.`)
   }
 
   function handleCopyLink() {
@@ -136,7 +138,7 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
               Ensaio final
             </h2>
             <p className="text-xs text-[#6B6460] mt-0.5">
-              Envie as fotos editadas. As demais selecionadas pela cliente entram sem edição.
+              Todas as fotos do ensaio inicial entram automaticamente. Adicione as editadas abaixo.
             </p>
           </div>
           {!uploading && (
@@ -147,7 +149,6 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
         </div>
 
         <div className="px-6 py-5 flex-1 overflow-y-auto space-y-5">
-          {/* Seletor de arquivos */}
           {!deliveryToken && (
             <div>
               <input
@@ -166,21 +167,14 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
                 <ImagePlus size={22} className="text-[#6B6460]" />
                 <span className="text-sm text-[#6B6460]">
                   {files.length > 0
-                    ? `${files.length} foto${files.length !== 1 ? 's' : ''} selecionada${files.length !== 1 ? 's' : ''} — clique para trocar`
-                    : 'Clique para selecionar as fotos editadas'}
+                    ? `${files.length} foto${files.length !== 1 ? 's' : ''} editada${files.length !== 1 ? 's' : ''} — clique para trocar`
+                    : 'Clique para adicionar fotos editadas (opcional)'}
                 </span>
-                <span className="text-xs text-[#6B6460]/60">JPG, PNG — múltiplos arquivos (opcional)</span>
+                <span className="text-xs text-[#6B6460]/60">JPG, PNG — múltiplos arquivos</span>
               </button>
-              {pendingReuse.length > 0 && (
-                <p className="text-[11px] text-[#6B6460] mt-2">
-                  {pendingReuse.length} foto{pendingReuse.length !== 1 ? 's' : ''} selecionada{pendingReuse.length !== 1 ? 's' : ''}
-                  {' '}pela cliente {pendingReuse.length !== 1 ? 'entrarão' : 'entrará'} automaticamente, mesmo sem edição.
-                </p>
-              )}
             </div>
           )}
 
-          {/* Preview */}
           {files.length > 0 && !deliveryToken && (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {previews.map((url, i) => (
@@ -192,7 +186,6 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
             </div>
           )}
 
-          {/* Progresso */}
           {uploading && (
             <div className="space-y-2">
               <div className="h-1.5 bg-[#E8E4E0] rounded overflow-hidden">
@@ -202,7 +195,6 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
             </div>
           )}
 
-          {/* Link gerado */}
           {deliveryToken && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded px-4 py-3">
@@ -241,11 +233,11 @@ export default function FinalDeliveryDialog({ album, selectedPhotos, existingFin
             )}
             <button
               onClick={handleUpload}
-              disabled={hasNothingToPublish || uploading}
+              disabled={uploading}
               className="flex items-center gap-2 px-6 py-2 bg-[#6B1F35] text-white text-xs rounded hover:bg-[#3D1020] transition-colors disabled:opacity-60"
             >
               {uploading
-                ? <><Loader2 size={13} className="animate-spin" />Enviando…</>
+                ? <><Loader2 size={13} className="animate-spin" />Publicando…</>
                 : <><Upload size={13} />Publicar ensaio final</>
               }
             </button>
