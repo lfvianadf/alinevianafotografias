@@ -522,30 +522,76 @@ export default function AlbumClient({ token }: { token: string }) {
       </div>
 
       {/* Grid */}
-      <main className="max-w-5xl mx-auto px-5 pb-36">
+      <main className="max-w-5xl mx-auto px-5 pb-36 space-y-8">
         {photos.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-[#6B6460] text-sm">Nenhuma foto disponível ainda.</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-              {photos.map((photo, i) => (
-                <MemoPhoto
-                  key={photo.id}
-                  photo={photo}
-                  index={i}
-                  isSelected={selections.has(photo.id)}
-                  selectionMode={selectionMode}
-                  onOpen={handleOpen}
-                  onToggleSelect={toggleSelection}
-                  onActivateMode={activateMode}
-                />
-              ))}
-            </div>
-            <div ref={sentinelRef} className="flex justify-center py-8">
-              {loadingMore && <Loader2 size={20} className="animate-spin text-[#6B6460]" />}
-            </div>
+            {/* Seção: selecionadas */}
+            {selections.size > 0 && (
+              <section className="rounded-lg bg-[#6B1F35]/6 border border-[#6B1F35]/20 p-4 sm:p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <CheckCircle2 size={15} className="text-[#6B1F35] shrink-0" />
+                  <p className="text-xs font-medium tracking-widest uppercase text-[#6B1F35]">
+                    Suas seleções — {selections.size} de {album.max_selections} mínimo
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+                  {photos
+                    .filter((p) => selections.has(p.id))
+                    .map((photo, i) => (
+                      <MemoPhoto
+                        key={photo.id}
+                        photo={photo}
+                        index={photos.indexOf(photo)}
+                        isSelected
+                        selectionMode={selectionMode}
+                        onOpen={handleOpen}
+                        onToggleSelect={toggleSelection}
+                        onActivateMode={activateMode}
+                      />
+                    ))}
+                  {/* Slots vazios até o mínimo */}
+                  {selections.size < album.max_selections &&
+                    Array.from({ length: album.max_selections - selections.size }).map((_, i) => (
+                      <div
+                        key={`slot-${i}`}
+                        className="aspect-[4/3] rounded border-2 border-dashed border-[#6B1F35]/20 flex items-center justify-center"
+                      >
+                        <span className="text-[10px] text-[#6B1F35]/40 tracking-widest uppercase">vaga</span>
+                      </div>
+                    ))}
+                </div>
+              </section>
+            )}
+
+            {/* Seção: todas as fotos */}
+            <section>
+              {selections.size > 0 && (
+                <p className="text-[11px] tracking-widest uppercase text-[#6B6460] mb-3">
+                  Todas as fotos
+                </p>
+              )}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+                {photos.map((photo, i) => (
+                  <MemoPhoto
+                    key={photo.id}
+                    photo={photo}
+                    index={i}
+                    isSelected={selections.has(photo.id)}
+                    selectionMode={selectionMode}
+                    onOpen={handleOpen}
+                    onToggleSelect={toggleSelection}
+                    onActivateMode={activateMode}
+                  />
+                ))}
+              </div>
+              <div ref={sentinelRef} className="flex justify-center py-8">
+                {loadingMore && <Loader2 size={20} className="animate-spin text-[#6B6460]" />}
+              </div>
+            </section>
           </>
         )}
       </main>
