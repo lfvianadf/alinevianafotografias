@@ -292,6 +292,7 @@ const BATCH = 10
 
 export default function AlbumClient({ token }: { token: string }) {
   const [photos, setPhotos] = useState<PhotoItem[]>([])
+  const [selectedPhotos, setSelectedPhotos] = useState<PhotoItem[]>([])
   const [album, setAlbum] = useState<AlbumMeta | null>(null)
   const [selections, setSelections] = useState<Set<string>>(new Set())
   const [hadPreviousSelection, setHadPreviousSelection] = useState(false)
@@ -342,22 +343,34 @@ export default function AlbumClient({ token }: { token: string }) {
 
       if (isFirst) {
         isFirstLoad.current = false
-        loadedCountRef.current = data.photos.length
-        setPhotos(data.photos)
         setAlbum(data.album)
-        setLoading(false)
 
         // Prioridade: localStorage (em andamento) > banco (confirmadas)
         const saved = (() => {
           try { return JSON.parse(localStorage.getItem(lsKey) ?? 'null') } catch { return null }
         })()
-        if (saved?.length > 0) {
-          setSelections(new Set(saved))
+        const selIds: string[] = saved?.length > 0 ? saved : (data.selectedPhotoIds ?? [])
+        const selSet = new Set<string>(selIds)
+        if (selIds.length > 0) {
+          setSelections(selSet)
           if (data.selectedPhotoIds?.length > 0) setHadPreviousSelection(true)
-        } else if (data.selectedPhotoIds?.length > 0) {
-          setSelections(new Set(data.selectedPhotoIds))
-          setHadPreviousSelection(true)
         }
+
+        // Busca todas as fotos selecionadas de uma vez (sem paginação)
+        if (selIds.length > 0) {
+          fetch('/api/album/photos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, offset: 0, limit: 999, onlyIds: selIds }),
+          })
+            .then(r => r.json())
+            .then(d => { if (d.photos) setSelectedPhotos(d.photos) })
+            .catch(() => {})
+        }
+
+        loadedCountRef.current = data.photos.length
+        setPhotos(data.photos)
+        setLoading(false)
       } else {
         loadedCountRef.current += data.photos.length
         setPhotos(prev => [...prev, ...data.photos])
@@ -404,8 +417,18 @@ export default function AlbumClient({ token }: { token: string }) {
   const toggleSelection = useCallback((id: string) => {
     setSelections(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+        setSelectedPhotos(sp => sp.filter(p => p.id !== id))
+      } else {
+        next.add(id)
+        // Adiciona a foto à seção de selecionadas a partir do estado photos
+        setPhotos(allPhotos => {
+          const found = allPhotos.find(p => p.id === id)
+          if (found) setSelectedPhotos(sp => [...sp, found])
+          return allPhotos
+        })
+      }
       saveToStorage(next)
       return next
     })
@@ -539,20 +562,18 @@ export default function AlbumClient({ token }: { token: string }) {
                   </p>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                  {photos
-                    .filter((p) => selections.has(p.id))
-                    .map((photo, i) => (
-                      <MemoPhoto
-                        key={photo.id}
-                        photo={photo}
-                        index={photos.indexOf(photo)}
-                        isSelected
-                        selectionMode={selectionMode}
-                        onOpen={handleOpen}
-                        onToggleSelect={toggleSelection}
-                        onActivateMode={activateMode}
-                      />
-                    ))}
+                  {selectedPhotos.map((photo) => (
+                    <MemoPhoto
+                      key={photo.id}
+                      photo={photo}
+                      index={photos.findIndex(p => p.id === photo.id)}
+                      isSelected
+                      selectionMode={selectionMode}
+                      onOpen={handleOpen}
+                      onToggleSelect={toggleSelection}
+                      onActivateMode={activateMode}
+                    />
+                  ))}
                   {/* Slots vazios até o mínimo */}
                   {selections.size < album.max_selections &&
                     Array.from({ length: album.max_selections - selections.size }).map((_, i) => (
@@ -567,7 +588,7 @@ export default function AlbumClient({ token }: { token: string }) {
               </section>
             )}
 
-            {/* Seção: todas as fotos */}
+            {/* Seção: demais fotos (exceto selecionadas) */}
             <section>
               {selections.size > 0 && (
                 <p className="text-[11px] tracking-widest uppercase text-[#6B6460] mb-3">
@@ -575,18 +596,20 @@ export default function AlbumClient({ token }: { token: string }) {
                 </p>
               )}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                {photos.map((photo, i) => (
-                  <MemoPhoto
-                    key={photo.id}
-                    photo={photo}
-                    index={i}
-                    isSelected={selections.has(photo.id)}
-                    selectionMode={selectionMode}
-                    onOpen={handleOpen}
-                    onToggleSelect={toggleSelection}
-                    onActivateMode={activateMode}
-                  />
-                ))}
+                {photos
+                  .filter(p => !selections.has(p.id))
+                  .map((photo, i) => (
+                    <MemoPhoto
+                      key={photo.id}
+                      photo={photo}
+                      index={photos.findIndex(p2 => p2.id === photo.id)}
+                      isSelected={false}
+                      selectionMode={selectionMode}
+                      onOpen={handleOpen}
+                      onToggleSelect={toggleSelection}
+                      onActivateMode={activateMode}
+                    />
+                  ))}
               </div>
               <div ref={sentinelRef} className="flex justify-center py-8">
                 {loadingMore && <Loader2 size={20} className="animate-spin text-[#6B6460]" />}

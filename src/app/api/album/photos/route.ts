@@ -39,7 +39,7 @@ async function getCachedSignedUrl(
 
 export async function POST(request: Request) {
   try {
-    const { token, offset = 0, limit = 10 } = await request.json()
+    const { token, offset = 0, limit = 10, onlyIds } = await request.json()
 
     if (!token || typeof token !== 'string') {
       return NextResponse.json({ error: 'Token inválido.' }, { status: 400 })
@@ -78,13 +78,20 @@ export async function POST(request: Request) {
       })
     }
 
-    // Busca apenas a página solicitada
-    const { data: photos } = await supabase
+    // Busca apenas a página solicitada (ou IDs específicos, sem paginação)
+    let query = supabase
       .from('photos')
       .select('id, storage_path, filename, order_index')
       .eq('album_id', album.id)
       .order('order_index')
-      .range(offset, offset + limit - 1)
+
+    if (Array.isArray(onlyIds) && onlyIds.length > 0) {
+      query = query.in('id', onlyIds)
+    } else {
+      query = query.range(offset, offset + limit - 1)
+    }
+
+    const { data: photos } = await query
 
     if (!photos || photos.length === 0) {
       return NextResponse.json({ photos: [], hasMore: false, total })
