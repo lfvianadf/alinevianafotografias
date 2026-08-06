@@ -297,6 +297,7 @@ export default function AlbumClient({ token }: { token: string }) {
   const [hadPreviousSelection, setHadPreviousSelection] = useState(false)
   const [loading, setLoading] = useState(true)
   const [confirming, setConfirming] = useState(false)
+  const [confirmProgress, setConfirmProgress] = useState(0)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
   const [submitError, setSubmitError] = useState('')
@@ -308,7 +309,7 @@ export default function AlbumClient({ token }: { token: string }) {
   const isFirstLoad = useRef(true)
   const loadingMoreRef = useRef(false)
   const hasMoreRef = useRef(true)
-  const photosCountRef = useRef(0)
+  const loadedCountRef = useRef(0)   // atualizado de forma síncrona dentro de loadBatch
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const lsKey = `album-sel-${token}`
@@ -322,7 +323,6 @@ export default function AlbumClient({ token }: { token: string }) {
   }, [lsKey])
 
   useEffect(() => { hasMoreRef.current = hasMore }, [hasMore])
-  useEffect(() => { photosCountRef.current = photos.length }, [photos.length])
 
   const loadBatch = useCallback(async (offset: number) => {
     const isFirst = offset === 0 && isFirstLoad.current
@@ -341,6 +341,7 @@ export default function AlbumClient({ token }: { token: string }) {
 
       if (isFirst) {
         isFirstLoad.current = false
+        loadedCountRef.current = data.photos.length
         setPhotos(data.photos)
         setAlbum(data.album)
         setLoading(false)
@@ -357,10 +358,12 @@ export default function AlbumClient({ token }: { token: string }) {
           setHadPreviousSelection(true)
         }
       } else {
+        loadedCountRef.current += data.photos.length
         setPhotos(prev => [...prev, ...data.photos])
       }
 
       setHasMore(data.hasMore)
+      hasMoreRef.current = data.hasMore
     } catch {
       if (isFirst) { setError('Não foi possível carregar o álbum. Tente novamente.'); setLoading(false) }
     }
@@ -377,7 +380,7 @@ export default function AlbumClient({ token }: { token: string }) {
       if (!entry.isIntersecting || loadingMoreRef.current || !hasMoreRef.current) return
       loadingMoreRef.current = true
       setLoadingMore(true)
-      loadBatch(photosCountRef.current).finally(() => {
+      loadBatch(loadedCountRef.current).finally(() => {
         loadingMoreRef.current = false
         setLoadingMore(false)
       })
@@ -406,6 +409,17 @@ export default function AlbumClient({ token }: { token: string }) {
     if (!album || selections.size === 0) return
     setSubmitError('')
     setConfirming(true)
+    setConfirmProgress(0)
+
+    // Anima o contador enquanto o request está em andamento
+    const total = selections.size
+    let current = 0
+    const interval = setInterval(() => {
+      current += 1
+      setConfirmProgress(Math.min(current, total - 1))
+      if (current >= total - 1) clearInterval(interval)
+    }, Math.max(30, Math.round(1200 / total)))
+
     try {
       const res = await fetch('/api/album/select', {
         method: 'POST',
@@ -413,10 +427,13 @@ export default function AlbumClient({ token }: { token: string }) {
         body: JSON.stringify({ token, photo_ids: Array.from(selections) }),
       })
       const data = await res.json()
+      clearInterval(interval)
       if (!res.ok) { setSubmitError(data.error ?? 'Erro ao confirmar.'); setConfirming(false); return }
+      setConfirmProgress(total)
       clearStorage()
       setDone(true)
     } catch {
+      clearInterval(interval)
       setSubmitError('Erro de rede. Tente novamente.')
       setConfirming(false)
     }
@@ -543,7 +560,12 @@ export default function AlbumClient({ token }: { token: string }) {
             ].join(' ')}
           >
             {confirming
-              ? <span className="flex items-center gap-2 justify-center"><Loader2 size={14} className="animate-spin" />Confirmando…</span>
+              ? (
+                <span className="flex items-center gap-2 justify-center">
+                  <Loader2 size={14} className="animate-spin" />
+                  {confirmProgress} de {selections.size} foto{selections.size !== 1 ? 's' : ''}…
+                </span>
+              )
               : hadPreviousSelection ? 'Alterar seleção' : 'Confirmar seleção'}
           </button>
         </div>
