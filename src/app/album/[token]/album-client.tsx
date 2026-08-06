@@ -309,7 +309,8 @@ export default function AlbumClient({ token }: { token: string }) {
   const isFirstLoad = useRef(true)
   const loadingMoreRef = useRef(false)
   const hasMoreRef = useRef(true)
-  const loadedCountRef = useRef(0)   // atualizado de forma síncrona dentro de loadBatch
+  const loadedCountRef = useRef(0)
+  const sentinelVisibleRef = useRef(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const lsKey = `album-sel-${token}`
@@ -371,20 +372,31 @@ export default function AlbumClient({ token }: { token: string }) {
 
   useEffect(() => { loadBatch(0) }, [loadBatch])
 
-  // Infinite scroll — roda de novo quando loading muda para false (sentinel entra no DOM)
+  // Infinite scroll — continua carregando enquanto o sentinel estiver visível
   useEffect(() => {
     if (loading) return
     const sentinel = sentinelRef.current
     if (!sentinel) return
-    const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting || loadingMoreRef.current || !hasMoreRef.current) return
+
+    function loadNext() {
+      if (!hasMoreRef.current || loadingMoreRef.current) return
       loadingMoreRef.current = true
       setLoadingMore(true)
       loadBatch(loadedCountRef.current).finally(() => {
         loadingMoreRef.current = false
         setLoadingMore(false)
+        // Se o sentinel ainda estiver visível, continua carregando
+        if (sentinelVisibleRef.current && hasMoreRef.current) {
+          loadNext()
+        }
       })
+    }
+
+    const observer = new IntersectionObserver(([entry]) => {
+      sentinelVisibleRef.current = entry.isIntersecting
+      if (entry.isIntersecting) loadNext()
     }, { rootMargin: '400px' })
+
     observer.observe(sentinel)
     return () => observer.disconnect()
   }, [loadBatch, loading])
