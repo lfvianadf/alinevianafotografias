@@ -613,22 +613,39 @@ export default function AlbumDetailPage() {
             Fotos do ensaio final ({finalPhotos.length})
           </h2>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-            {finalPhotos.map((photo) => (
-              <div key={photo.id} className="relative group aspect-square rounded overflow-hidden border border-[#E8E4E0]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photo.signedUrl} alt={photo.filename} className="w-full h-full object-cover" loading="lazy" />
-                <button
-                  onClick={() => handleDeleteFinalPhoto(photo)}
-                  disabled={deletingFinalId === photo.id}
-                  className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-60"
-                  aria-label="Remover foto do ensaio final"
+            {finalPhotos.map((photo) => {
+              const isEdited = photo.storage_path.startsWith(`finals/${albumId}/`)
+              return (
+                <div
+                  key={photo.id}
+                  className={[
+                    'relative group aspect-square rounded overflow-hidden',
+                    isEdited
+                      ? 'ring-2 ring-[#6B1F35] border border-[#6B1F35]'
+                      : 'border border-[#E8E4E0]',
+                  ].join(' ')}
                 >
-                  {deletingFinalId === photo.id
-                    ? <Loader2 size={13} className="animate-spin" />
-                    : <Trash2 size={13} />}
-                </button>
-              </div>
-            ))}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo.signedUrl} alt={photo.filename} className="w-full h-full object-cover" loading="lazy" />
+                  <span className={[
+                    'absolute bottom-0 inset-x-0 text-[9px] tracking-widest uppercase text-center py-0.5 font-medium',
+                    isEdited ? 'bg-[#6B1F35] text-white' : 'bg-black/30 text-white/70',
+                  ].join(' ')}>
+                    {isEdited ? 'Editada' : 'Original'}
+                  </span>
+                  <button
+                    onClick={() => handleDeleteFinalPhoto(photo)}
+                    disabled={deletingFinalId === photo.id}
+                    className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-60"
+                    aria-label="Remover foto do ensaio final"
+                  >
+                    {deletingFinalId === photo.id
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : <Trash2 size={13} />}
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
