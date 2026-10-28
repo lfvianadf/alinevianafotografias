@@ -14,16 +14,30 @@ function adminClient() {
 const SIGNED_URL_TTL = 24 * 60 * 60 // 24h
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>()
 
-async function getCachedSignedUrl(supabase: ReturnType<typeof adminClient>, storagePath: string) {
-  const cached = signedUrlCache.get(storagePath)
+async function getCachedSignedUrls(supabase: ReturnType<typeof adminClient>, paths: string[]) {
   const now = Date.now()
-  if (cached && cached.expiresAt > now + 5 * 60 * 1000) {
-    return cached.url
+  const urls = new Map<string, string>()
+  const missing: string[] = []
+  for (const path of Array.from(new Set(paths))) {
+    const cached = signedUrlCache.get(path)
+    if (cached && cached.expiresAt > now + 5 * 60 * 1000) urls.set(path, cached.url)
+    else missing.push(path)
   }
-  const { data } = await supabase.storage.from('albums').createSignedUrl(storagePath, SIGNED_URL_TTL)
-  if (!data?.signedUrl) return null
-  signedUrlCache.set(storagePath, { url: data.signedUrl, expiresAt: now + SIGNED_URL_TTL * 1000 })
-  return data.signedUrl
+  // Limita cada chamada e substitui centenas de requisições individuais por lotes.
+  for (let offset = 0; offset < missing.length; offset += 100) {
+    const { data, error } = await supabase.storage.from('albums')
+      .createSignedUrls(missing.slice(offset, offset + 100), SIGNED_URL_TTL)
+    if (error) throw error
+    for (const item of data ?? []) {
+      if (!item.path || !item.signedUrl) continue
+      urls.set(item.path, item.signedUrl)
+      signedUrlCache.set(item.path, { url: item.signedUrl, expiresAt: now + SIGNED_URL_TTL * 1000 })
+    }
+  }
+  for (const [path, cached] of Array.from(signedUrlCache)) {
+    if (cached.expiresAt <= now) signedUrlCache.delete(path)
+  }
+  return urls
 }
 
 export async function POST(request: Request) {
@@ -51,13 +65,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ photos: [], meta: { album_name: album.name, client_name: album.client_name } })
     }
 
-    const photosWithUrls = await Promise.all(
-      finalPhotos.map(async (photo) => {
-        const signedUrl = await getCachedSignedUrl(supabase, photo.storage_path)
-        const edited = photo.storage_path.startsWith(`finals/${album.id}/`)
-        return { id: photo.id, filename: photo.filename, signedUrl: signedUrl ?? '', edited }
-      })
-    )
+    const urls = await getCachedSignedUrls(supabase, finalPhotos.map(photo => photo.storage_path))
+    const uniquePhotos = Array.from(new Map(finalPhotos.map(photo => [photo.storage_path, photo])).values())
+    const photosWithUrls = uniquePhotos.map(photo => ({
+      id: photo.id,
+      filename: photo.filename,
+      signedUrl: urls.get(photo.storage_path) ?? '',
+      edited: photo.storage_path.startsWith(`finals/${album.id}/`),
+    }))
 
     return NextResponse.json({
       photos: photosWithUrls.filter((p) => p.signedUrl),

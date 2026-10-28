@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import JSZip from 'jszip'
+import Image from 'next/image'
 import { Download, Loader2 } from 'lucide-react'
 
 type FinalPhotoItem = {
@@ -28,7 +29,10 @@ function PhotoGrid({ photos }: { photos: FinalPhotoItem[] }) {
         >
           <div className="aspect-[4/3]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
+              width={600}
+              height={450}
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
               src={photo.signedUrl}
               alt={photo.filename}
               className="w-full h-full object-cover"
@@ -113,7 +117,7 @@ export default function DeliveryClient({ token }: { token: string }) {
         <div className="max-w-5xl mx-auto px-6 py-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div className="flex items-center gap-5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src="/image.png"
               alt="Aline Viana Fotografias"
               className="h-10 object-contain"

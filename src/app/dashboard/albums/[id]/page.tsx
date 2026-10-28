@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { toast } from 'sonner'
 import {
   DndContext,
@@ -92,8 +93,10 @@ function SortablePhoto({
         {!imgLoaded && (
           <div className="absolute inset-0 bg-[#EDE8E3] animate-pulse" />
         )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
+          width={600}
+          height={600}
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
           src={photo.signedUrl}
           alt={photo.filename}
           onLoad={() => setImgLoaded(true)}
@@ -189,7 +192,7 @@ export default function AlbumDetailPage() {
   const totalPhotosRef = useRef(0)
   const photosCountRef = useRef(0)
 
-  const PHOTO_BATCH = 10
+  const PHOTO_BATCH = 30
 
   const supabase = createClient()
 
@@ -216,14 +219,14 @@ export default function AlbumDetailPage() {
       return
     }
 
-    const withUrls = await Promise.all(
-      photosData.map(async (photo: Photo) => {
-        const { data } = await supabase.storage
-          .from('albums')
-          .createSignedUrl(photo.storage_path, 3600)
-        return { ...photo, signedUrl: data?.signedUrl ?? '' }
-      })
-    )
+    const { data: signed, error: signingError } = await supabase.storage
+      .from('albums')
+      .createSignedUrls(photosData.map((photo: Photo) => photo.storage_path), 3600)
+    if (signingError) throw signingError
+    const urls = new Map(signed?.map(item => [item.path, item.signedUrl]))
+    const withUrls = photosData.map((photo: Photo) => ({
+      ...photo, signedUrl: urls.get(photo.storage_path) ?? '',
+    }))
 
     if (offset === 0) {
       setPhotos(withUrls)
@@ -249,14 +252,14 @@ export default function AlbumDetailPage() {
       return
     }
 
-    const withUrls = await Promise.all(
-      data.map(async (photo) => {
-        const { data: signed } = await supabase.storage
-          .from('albums')
-          .createSignedUrl(photo.storage_path, 3600)
-        return { ...photo, signedUrl: signed?.signedUrl ?? '' }
-      })
-    )
+    // Originais já estão no grid principal; só as edições precisam de outra prévia.
+    const edited = data.filter(photo => photo.storage_path.startsWith(`finals/${albumId}/`))
+    const { data: signed, error: signingError } = edited.length
+      ? await supabase.storage.from('albums').createSignedUrls(edited.map(photo => photo.storage_path), 3600)
+      : { data: [], error: null }
+    if (signingError) throw signingError
+    const urls = new Map(signed?.map(item => [item.path, item.signedUrl]))
+    const withUrls = data.map(photo => ({ ...photo, signedUrl: urls.get(photo.storage_path) ?? '' }))
     setFinalPhotos(withUrls)
     setHasDelivery(true)
   }, [albumId])
@@ -272,13 +275,12 @@ export default function AlbumDetailPage() {
       setAlbum(albumRes.data)
       setDeliveryToken(albumRes.data.delivery_token ?? null)
     }
-    await loadFinalPhotos()
     if (selectionsRes.data) {
       setSelections(new Set(selectionsRes.data.map((s: Selection) => s.photo_id)))
     }
 
     totalPhotosRef.current = countRes.count ?? 0
-    await loadPhotosBatch(0)
+    await Promise.all([loadPhotosBatch(0), loadFinalPhotos()])
     setLoading(false)
   }, [albumId, loadPhotosBatch, loadFinalPhotos])
 
@@ -491,6 +493,7 @@ export default function AlbumDetailPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const editedFinalPhotos = finalPhotos.filter(photo => photo.storage_path.startsWith(`finals/${albumId}/`))
   const selectedPhotos = photos.filter((p) => selections.has(p.id))
 
   if (loading) {
@@ -607,13 +610,13 @@ export default function AlbumDetailPage() {
       </div>
 
       {/* Ensaio final — gerenciar fotos já publicadas */}
-      {finalPhotos.length > 0 && (
+      {editedFinalPhotos.length > 0 && (
         <div className="border border-border rounded-md p-6 bg-surface/40">
           <h2 className="font-display text-xl font-light mb-4">
-            Fotos do ensaio final ({finalPhotos.length})
+            Fotos editadas do ensaio final ({editedFinalPhotos.length})
           </h2>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-            {finalPhotos.map((photo) => {
+            {editedFinalPhotos.map((photo) => {
               const isEdited = photo.storage_path.startsWith(`finals/${albumId}/`)
               return (
                 <div
@@ -625,8 +628,7 @@ export default function AlbumDetailPage() {
                       : 'border border-[#E8E4E0]',
                   ].join(' ')}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo.signedUrl} alt={photo.filename} className="w-full h-full object-cover" loading="lazy" />
+                          <Image width={400} height={400} sizes="(max-width: 640px) 33vw, 160px" src={photo.signedUrl} alt={photo.filename} className="w-full h-full object-cover" loading="lazy" />
                   <span className={[
                     'absolute bottom-0 inset-x-0 text-[9px] tracking-widest uppercase text-center py-0.5 font-medium',
                     isEdited ? 'bg-[#6B1F35] text-white' : 'bg-black/30 text-white/70',
@@ -722,8 +724,10 @@ export default function AlbumDetailPage() {
                   key={photo.id}
                   className="aspect-square rounded overflow-hidden border border-[#6B1F35]/30"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <Image
+                    width={240}
+                    height={240}
+                    sizes="(max-width: 640px) 33vw, 160px"
                     src={photo.signedUrl}
                     alt={photo.filename}
                     className="w-full h-full object-cover"
